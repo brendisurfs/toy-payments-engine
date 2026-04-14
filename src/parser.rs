@@ -91,6 +91,7 @@ pub fn read_row_to_record<R: Read>(
     let transaction = record
         .deserialize::<Transaction>(headers)
         .inspect_err(|why| error!("Failed to deserialize record: {why:?}"))?;
+
     Ok(transaction)
 }
 
@@ -101,7 +102,7 @@ mod tests {
     use csv::StringRecord;
     use tracing::Level;
 
-    use crate::parser::{CSV_HEADERS, Transaction, build_csv_reader_from_stream};
+    use crate::parser::{build_csv_reader_from_stream, Transaction, CSV_HEADERS};
 
     #[test]
     fn test_csv_reader_builder() {
