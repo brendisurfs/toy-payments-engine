@@ -1,11 +1,8 @@
 use std::io::Read;
 
-use csv::StringRecord;
+use csv::{StringRecord, Trim};
 use serde::Deserialize;
 use tracing::error;
-
-/// Headers we can expect from our csv file.
-const CSV_HEADERS: [&str; 4] = ["type", "client", "tx", "amount"];
 
 /// Since the csv crate doesnt seem to allow for tagged enum variants,
 /// we need to implement our own row struct that can be parsed.
@@ -69,8 +66,8 @@ impl TryFrom<RawRow> for Transaction {
 
 /// Parses an input Reader as a csv.
 /// This should be able to take a generic stream of data.
-pub fn build_csv_reader_from_stream<R: Read>(input: R) -> csv::Reader<R> {
-    csv::Reader::from_reader(input)
+pub fn build_csv_reader<R: Read>(input: R) -> csv::Reader<R> {
+    csv::ReaderBuilder::new().trim(Trim::All).from_reader(input)
 }
 
 /// Reads a transaction row and parses it into a record.
@@ -81,13 +78,10 @@ pub fn build_csv_reader_from_stream<R: Read>(input: R) -> csv::Reader<R> {
 ///
 /// This function will return an error if the reader cannot read to the byte record,
 /// or if the record cannot deserialize to a Transaction variant.
-pub fn read_row_to_record<R: Read>(
-    reader: &mut csv::Reader<R>,
+pub fn read_row_to_record(
+    record: &StringRecord,
     headers: Option<&StringRecord>,
 ) -> anyhow::Result<Transaction> {
-    let mut record = StringRecord::new();
-    reader.read_record(&mut record)?;
-
     let transaction = record
         .deserialize::<Transaction>(headers)
         .inspect_err(|why| error!("Failed to deserialize record: {why:?}"))?;
@@ -100,24 +94,13 @@ mod tests {
     use std::fs::File;
 
     use csv::StringRecord;
-    use tracing::Level;
 
-    use crate::parser::{build_csv_reader_from_stream, Transaction, CSV_HEADERS};
+    use crate::parser::{self, build_csv_reader, Transaction};
 
     #[test]
     fn test_csv_reader_builder() {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::DEBUG)
-            .with_line_number(true)
-            .with_file(true)
-            .init();
-
-        let Ok(data) = File::open("./test.csv") else {
-            panic!("test file unable to open");
-        };
-
-        let headers = StringRecord::from_iter(CSV_HEADERS.iter());
-        let mut reader = build_csv_reader_from_stream(data);
+        let data = File::open("./test.csv").expect("test file unable to open");
+        let reader = build_csv_reader(data);
         assert!(true);
     }
 
@@ -130,7 +113,7 @@ mod tests {
         };
 
         let record = StringRecord::from(vec!["deposit", "1", "1", "1.0"]);
-        let headers = StringRecord::from_iter(CSV_HEADERS.iter());
+        let headers = StringRecord::from_iter(["type", "client", "tx", "amount"].iter());
         let parsed_transaction = record.deserialize::<Transaction>(Some(&headers));
         assert!(parsed_transaction.is_ok());
 
