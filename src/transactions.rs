@@ -111,21 +111,28 @@ pub fn on_transaction(
     transaction: Rc<Transaction>,
     manager: &mut AccountManager,
 ) -> anyhow::Result<()> {
+    manager.write_to_log(transaction.clone());
+
     tracing::trace!("Handling transaction");
     match *transaction {
-        Transaction::Deposit { .. } => on_deposit(manager, transaction)?,
-        Transaction::Withdrawal { .. } => on_withdrawal(manager, transaction)?,
-
-        Transaction::Dispute {
-            reference_tx,
+        Transaction::Deposit {
             client_id,
+            tx,
+            amount,
+        } => on_deposit(manager, client_id, tx, amount)?,
+        Transaction::Dispute {
+            client_id,
+            reference_tx,
         } => on_dispute(manager, client_id, reference_tx)?,
-
         Transaction::Resolve {
             client_id,
             reference_tx,
         } => on_resolve(manager, client_id, reference_tx)?,
-
+        Transaction::Withdrawal {
+            client_id,
+            tx,
+            amount,
+        } => on_withdrawal(manager, client_id, tx, amount)?,
         Transaction::Chargeback {
             client_id,
             reference_tx,
@@ -135,18 +142,12 @@ pub fn on_transaction(
     Ok(())
 }
 
-fn on_deposit(manager: &mut AccountManager, transaction: Rc<Transaction>) -> anyhow::Result<()> {
-    let Transaction::Deposit {
-        tx,
-        amount,
-        client_id,
-    } = *transaction
-    else {
-        bail!("Provided transaction is not Deposit");
-    };
-
-    manager.write_to_log(transaction);
-
+fn on_deposit(
+    manager: &mut AccountManager,
+    client_id: u16,
+    tx: u16,
+    amount: f32,
+) -> anyhow::Result<()> {
     let before_account = manager.get_account(client_id);
     tracing::debug!("Before account: {before_account:?}");
 
@@ -156,7 +157,12 @@ fn on_deposit(manager: &mut AccountManager, transaction: Rc<Transaction>) -> any
     todo!("Implement on deposit")
 }
 
-fn on_withdrawal(manager: &mut AccountManager, transaction: Rc<Transaction>) -> anyhow::Result<()> {
+fn on_withdrawal(
+    manager: &mut AccountManager,
+    client_id: u16,
+    tx: u16,
+    amount: f32,
+) -> anyhow::Result<()> {
     todo!("Implement on_withdrawal")
 }
 
