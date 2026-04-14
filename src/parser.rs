@@ -1,9 +1,10 @@
 use std::io::Read;
 
 use csv::StringRecord;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::error;
 
+/// Headers we can expect from our csv file.
 const CSV_HEADERS: [&str; 4] = ["type", "client", "tx", "amount"];
 
 /// Since the csv crate doesnt seem to allow for tagged enum variants,
@@ -67,10 +68,7 @@ impl TryFrom<RawRow> for Transaction {
 }
 
 /// Parses an input Reader as a csv.
-/// This should be able to take a generic stream of data,
-/// # Errors
-///
-/// This function will return an error if .
+/// This should be able to take a generic stream of data.
 pub fn build_csv_reader_from_stream<R: Read>(input: R) -> csv::Reader<R> {
     csv::Reader::from_reader(input)
 }
@@ -90,14 +88,6 @@ pub fn read_row_to_record<R: Read>(
     // initialize a new byte record to read into.
     let mut record = StringRecord::new();
     reader.read_record(&mut record)?;
-    tracing::debug!("{record:?}");
-
-    let tx_type = record
-        .get(0)
-        .expect("failed to get first field of record")
-        .trim();
-
-    tracing::debug!("{tx_type}");
 
     let transaction = record
         .deserialize::<Transaction>(headers)
