@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use anyhow::bail;
 use serde::Deserialize;
 
 use crate::accounts::AccountManager;
