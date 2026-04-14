@@ -84,16 +84,14 @@ pub fn build_csv_reader_from_stream<R: Read>(input: R) -> csv::Reader<R> {
 pub fn read_row_to_record<R: Read>(
     reader: &mut csv::Reader<R>,
     headers: Option<&StringRecord>,
-) -> anyhow::Result<()> {
-    // initialize a new byte record to read into.
+) -> anyhow::Result<Transaction> {
     let mut record = StringRecord::new();
     reader.read_record(&mut record)?;
 
     let transaction = record
         .deserialize::<Transaction>(headers)
         .inspect_err(|why| error!("Failed to deserialize record: {why:?}"))?;
-    let _ = dbg!(transaction);
-    Ok(())
+    Ok(transaction)
 }
 
 #[cfg(test)]
