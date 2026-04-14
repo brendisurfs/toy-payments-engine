@@ -1,68 +1,9 @@
 use std::io::Read;
 
 use csv::{StringRecord, Trim};
-use serde::Deserialize;
 use tracing::error;
 
-/// Since the csv crate doesnt seem to allow for tagged enum variants,
-/// we need to implement our own row struct that can be parsed.
-#[derive(Debug, Deserialize)]
-struct RawRow {
-    #[serde(rename = "type")]
-    tx_kind: String,
-    client: u16,
-    tx: u64,
-    amount: Option<f32>,
-}
-
-/// The different actions we can have within our payments engine.
-/// Note that Dispute, Resolve, and Chargeback do not have amounts,
-/// as they reference the amount from the transaction ID (tx).
-#[derive(Debug, Deserialize, PartialEq)]
-#[serde(try_from = "RawRow", rename_all = "lowercase")]
-pub enum Transaction {
-    Deposit { client: u16, tx: u64, amount: f32 },
-    Withdrawal { client: u16, tx: u64, amount: f32 },
-    Dispute { client: u16, tx: u64 },
-    Resolve { client: u16, tx: u64 },
-    Chargeback { client: u16, tx: u64 },
-}
-impl TryFrom<RawRow> for Transaction {
-    type Error = String;
-    fn try_from(value: RawRow) -> Result<Self, Self::Error> {
-        match value.tx_kind.trim() {
-            "deposit" => {
-                let amount = value.amount.ok_or("Deposit requires an amount")?;
-                Ok(Transaction::Deposit {
-                    client: value.client,
-                    tx: value.tx,
-                    amount,
-                })
-            }
-            "withdrawal" => {
-                let amount = value.amount.ok_or("Deposit requires an amount")?;
-                Ok(Transaction::Withdrawal {
-                    client: value.client,
-                    tx: value.tx,
-                    amount,
-                })
-            }
-            "dispute" => Ok(Transaction::Dispute {
-                client: value.client,
-                tx: value.tx,
-            }),
-            "resolve" => Ok(Transaction::Resolve {
-                client: value.client,
-                tx: value.tx,
-            }),
-            "chargeback" => Ok(Transaction::Chargeback {
-                client: value.client,
-                tx: value.tx,
-            }),
-            other => Err(format!("Unknown transaction type: {other:?}")),
-        }
-    }
-}
+use crate::transactions::Transaction;
 
 /// Parses an input Reader as a csv.
 /// This should be able to take a generic stream of data.
@@ -78,7 +19,7 @@ pub fn build_csv_reader<R: Read>(input: R) -> csv::Reader<R> {
 ///
 /// This function will return an error if the reader cannot read to the byte record,
 /// or if the record cannot deserialize to a Transaction variant.
-pub fn read_row_to_record(
+pub fn read_record_to_transaction(
     record: &StringRecord,
     headers: Option<&StringRecord>,
 ) -> anyhow::Result<Transaction> {
@@ -91,11 +32,12 @@ pub fn read_row_to_record(
 
 #[cfg(test)]
 mod tests {
+    use crate::transactions::Transaction;
     use std::fs::File;
 
     use csv::StringRecord;
 
-    use crate::parser::{self, build_csv_reader, Transaction};
+    use crate::parser::build_csv_reader;
 
     #[test]
     fn test_csv_reader_builder() {
@@ -107,7 +49,7 @@ mod tests {
     #[test]
     fn test_row_parses() {
         let wanted_transaction = Transaction::Deposit {
-            client: 1,
+            client_id: 1,
             tx: 1,
             amount: 1.0,
         };
