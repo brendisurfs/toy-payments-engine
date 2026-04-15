@@ -120,10 +120,7 @@ impl TryFrom<RawRow> for PaymentEvent {
 
 /// handles the next transaction event from our stream.
 /// We match on our incoming event and calls the proper function to that event.
-pub fn on_next_transaction(
-    record: PaymentRecord,
-    manager: &mut AccountManager,
-) -> anyhow::Result<()> {
+pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) {
     tracing::trace!("Handling transaction");
     match record {
         PaymentRecord::Transaction(txn) => {
@@ -139,7 +136,7 @@ pub fn on_next_transaction(
             // write each Withdrawal and Deposit to a log we can reference later.
             manager.write_to_log(txn.clone());
 
-            return match *txn {
+            let _ = match *txn {
                 Transaction::Deposit {
                     client_id, amount, ..
                 } => on_deposit(manager, client_id, amount),
@@ -153,19 +150,29 @@ pub fn on_next_transaction(
             PaymentEvent::Dispute {
                 client_id,
                 reference_tx,
-            } => on_dispute(manager, client_id, reference_tx)?,
+            } => {
+                if let Err(why) = on_dispute(manager, client_id, reference_tx) {
+                    tracing::error!("{why:?}");
+                };
+            }
             PaymentEvent::Resolve {
                 client_id,
                 reference_tx,
-            } => on_resolve(manager, client_id, reference_tx)?,
+            } => {
+                if let Err(why) = on_resolve(manager, client_id, reference_tx) {
+                    tracing::error!("{why:?}");
+                };
+            }
             PaymentEvent::Chargeback {
                 client_id,
                 reference_tx,
-            } => on_chargeback(manager, client_id, reference_tx)?,
+            } => {
+                if let Err(why) = on_chargeback(manager, client_id, reference_tx) {
+                    tracing::error!("{why:?}");
+                };
+            }
         },
     }
-
-    Ok(())
 }
 
 /// Handles a deposit event by adding to an account with the provided client_id.
@@ -173,17 +180,17 @@ fn on_deposit(manager: &mut AccountManager, client_id: u16, amount: f32) -> anyh
     let before_account = manager.get_or_add_account(client_id);
     tracing::debug!("Before account: {before_account:?}");
 
-    let account = manager.deposit_to_account(client_id, amount);
-    tracing::debug!("After deposit: {account:?}");
+    let did_deposit = manager.deposit_to_account(client_id, amount);
+    tracing::debug!("Did deposit: {did_deposit}");
 
     Ok(())
 }
 
+/// Handles a withdrawal event.
 fn on_withdrawal(manager: &mut AccountManager, client_id: u16, amount: f32) -> anyhow::Result<()> {
-    if !manager.withdraw_from_account(client_id, amount) {
-        bail!("Unable to withdraw from account")
-    }
-
+    manager
+        .withdraw_from_account(client_id, amount)
+        .inspect_err(|why| tracing::error!("{why:?}"));
     Ok(())
 }
 

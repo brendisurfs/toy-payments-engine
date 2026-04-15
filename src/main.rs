@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
 
     while let Some(Ok(record)) = reader.records().next() {
         let payment_record = parser::read_to_payment_record(&record, None)?;
-        on_next_transaction(payment_record, &mut account_manager)?;
+        on_next_transaction(payment_record, &mut account_manager);
     }
 
     Ok(())
