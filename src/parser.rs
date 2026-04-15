@@ -49,6 +49,7 @@ pub fn read_to_payment_record(
 
             Ok(PaymentRecord::MutatingEvent(parsed_event))
         }
+
         other => bail!("Invalid transaction type found: {other}"),
     }
 }

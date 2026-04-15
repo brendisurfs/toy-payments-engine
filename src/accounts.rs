@@ -256,14 +256,18 @@ mod tests {
         let mut act_mgr = AccountManager::default();
         act_mgr.deposit_to_account(1, dec!(10.0));
         let did_withdraw = act_mgr.withdraw_from_account(1, dec!(11.0));
+        assert_eq!(did_withdraw, false);
+
+        act_mgr.deposit_to_account(1, dec!(10.0));
+        let did_withdraw = act_mgr.withdraw_from_account(1, dec!(9.0));
         assert!(did_withdraw);
     }
 
     #[test]
     fn test_account_deposit() {
         let mut act_mgr = AccountManager::default();
-        let _ = act_mgr.get_account(2);
         let did_deposit = act_mgr.deposit_to_account(2, dec!(1.0));
+        let _ = act_mgr.get_account(2);
         assert!(did_deposit);
     }
 }

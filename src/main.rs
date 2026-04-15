@@ -27,9 +27,17 @@ fn main() -> anyhow::Result<()> {
 
     let mut account_manager = AccountManager::default();
 
-    while let Some(Ok(record)) = reader.records().next() {
-        let payment_record = parser::read_to_payment_record(&record, None)?;
-        on_next_transaction(payment_record, &mut account_manager);
+    while let Some(next_record) = reader.records().next() {
+        match next_record {
+            Ok(record) => {
+                let payment_record = parser::read_to_payment_record(&record, None)?;
+                on_next_transaction(payment_record, &mut account_manager);
+            }
+            Err(why) => {
+                tracing::error!("{why:?}");
+                continue;
+            }
+        }
     }
 
     account_manager.print_accounts();
