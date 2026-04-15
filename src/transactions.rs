@@ -1,11 +1,11 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
-use anyhow::{anyhow, bail};
 use serde::Deserialize;
 
 use crate::{accounts::AccountManager, parser::PaymentRecord};
 
-enum TransactionStatus {
+#[derive(Debug, Deserialize, PartialEq, Clone, Copy)]
+pub enum TransactionStatus {
     Clean,
     Frozen,
     Disputed,
@@ -31,12 +31,14 @@ pub enum Transaction {
         client_id: u16,
         tx: u32,
         amount: f32,
+        status: TransactionStatus,
     },
     Withdrawal {
         #[serde(rename = "client")]
         client_id: u16,
         tx: u32,
         amount: f32,
+        status: TransactionStatus,
     },
 }
 impl Transaction {
@@ -45,6 +47,29 @@ impl Transaction {
         match self {
             Transaction::Deposit { tx, .. } => tx,
             Transaction::Withdrawal { tx, .. } => tx,
+        }
+    }
+    pub fn amount(&self) -> &f32 {
+        match self {
+            Transaction::Deposit { amount, .. } => amount,
+            Transaction::Withdrawal { amount, .. } => amount,
+        }
+    }
+
+    pub fn client_id(&self) -> &u16 {
+        match self {
+            Transaction::Deposit { client_id, .. } => client_id,
+            Transaction::Withdrawal { client_id, .. } => client_id,
+        }
+    }
+    pub fn update_status(&mut self, new_status: TransactionStatus) {
+        match self {
+            Transaction::Deposit { status, .. } => {
+                *status = new_status;
+            }
+            Transaction::Withdrawal { status, .. } => {
+                *status = new_status;
+            }
         }
     }
 }
@@ -60,12 +85,14 @@ impl TryFrom<RawRow> for Transaction {
                 amount,
                 tx: value.tx,
                 client_id: value.client,
+                status: TransactionStatus::Clean,
             }),
 
             "withdrawal" => Ok(Transaction::Withdrawal {
                 amount,
                 tx: value.tx,
                 client_id: value.client,
+                status: TransactionStatus::Clean,
             }),
 
             other => Err(format!("Invalid transaction type: {other}")),
@@ -121,7 +148,6 @@ impl TryFrom<RawRow> for PaymentEvent {
 /// handles the next transaction event from our stream.
 /// We match on our incoming event and calls the proper function to that event.
 pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) {
-    tracing::trace!("Handling transaction");
     match record {
         PaymentRecord::Transaction(txn) => {
             // we wrap the transaction in an Rc so that we arent
@@ -131,12 +157,12 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
             // This does come with a slight performance overhead, though not in any meaningful way
             // here, but if this were a production system, this would possibly be changed.
             // For now, we are focusing on resource usage rather than raw hotpath performance.
-            let txn = Rc::new(txn);
+            let txn = Rc::new(RefCell::new(txn));
 
             // write each Withdrawal and Deposit to a log we can reference later.
             manager.write_to_log(txn.clone());
 
-            let _ = match *txn {
+            match *txn.borrow() {
                 Transaction::Deposit {
                     client_id, amount, ..
                 } => on_deposit(manager, client_id, amount),
@@ -147,14 +173,7 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
         }
 
         PaymentRecord::MutatingEvent(event) => match event {
-            PaymentEvent::Dispute {
-                client_id,
-                reference_tx,
-            } => {
-                if let Err(why) = on_dispute(manager, client_id, reference_tx) {
-                    tracing::error!("{why:?}");
-                };
-            }
+            PaymentEvent::Dispute { reference_tx, .. } => manager.dispute_transaction(reference_tx),
             PaymentEvent::Resolve {
                 client_id,
                 reference_tx,
@@ -176,30 +195,20 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
 }
 
 /// Handles a deposit event by adding to an account with the provided client_id.
-fn on_deposit(manager: &mut AccountManager, client_id: u16, amount: f32) -> anyhow::Result<()> {
-    let before_account = manager.get_or_add_account(client_id);
+fn on_deposit(manager: &mut AccountManager, client_id: u16, amount: f32) {
+    let before_account = manager.get_account(client_id);
     tracing::debug!("Before account: {before_account:?}");
 
     let did_deposit = manager.deposit_to_account(client_id, amount);
     tracing::debug!("Did deposit: {did_deposit}");
 
-    Ok(())
+    let after_acct = manager.get_account(client_id);
+    tracing::debug!("After account: {after_acct:?}");
 }
 
 /// Handles a withdrawal event.
-fn on_withdrawal(manager: &mut AccountManager, client_id: u16, amount: f32) -> anyhow::Result<()> {
-    manager
-        .withdraw_from_account(client_id, amount)
-        .inspect_err(|why| tracing::error!("{why:?}"));
-    Ok(())
-}
-
-fn on_dispute(
-    manager: &mut AccountManager,
-    client_id: u16,
-    reference_txn: u32,
-) -> anyhow::Result<()> {
-    todo!("Implement on_dispute")
+fn on_withdrawal(manager: &mut AccountManager, client_id: u16, amount: f32) {
+    manager.withdraw_from_account(client_id, amount);
 }
 
 fn on_resolve(

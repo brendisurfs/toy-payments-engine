@@ -1,9 +1,8 @@
-use std::{collections::HashMap, ops::Sub, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ops::DerefMut, rc::Rc};
 
-use anyhow::anyhow;
 use serde::Serialize;
 
-use crate::transactions::Transaction;
+use crate::transactions::{Transaction, TransactionStatus};
 
 /// Defines our structure for a single client.
 #[derive(Debug, Serialize, Default)]
@@ -37,18 +36,53 @@ pub struct AccountManager {
     /// keep an log-like structure for our system to reference previous transactions.
     /// Note that this is a simple implementation, and should not be used in production due to excess memory allocation.
     /// Rather, a production setup would use an append-only database to reference previous transactions.
-    txn_log: HashMap<u32, Rc<Transaction>>,
+    transaction_log: HashMap<u32, Rc<RefCell<Transaction>>>,
 }
 
 impl AccountManager {
-    pub fn write_to_log(&mut self, transaction: Rc<Transaction>) {
+    pub fn write_to_log(&mut self, transaction: Rc<RefCell<Transaction>>) {
         tracing::trace!("Write to tx_log");
-        let tx_id = transaction.id();
-        self.txn_log.insert(*tx_id, transaction);
+        let txn_id = *transaction.borrow().id();
+        self.transaction_log.insert(txn_id, transaction);
+    }
+
+    /// Retrieves a reference to a Transaction from the transaction log, if it exists.
+    pub fn get_transaction(&self, reference_txn: u32) -> Option<Rc<RefCell<Transaction>>> {
+        self.transaction_log.get(&reference_txn).cloned()
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn dispute_transaction(&mut self, reference_txn: u32) {
+        let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
+            tracing::warn!("No found transaction");
+            return;
+        };
+
+        let (client_id, amount) = {
+            let borrower = txn.borrow();
+            (*borrower.client_id(), *borrower.amount())
+        };
+
+        let Some(acct) = self.accounts.get_mut(&client_id) else {
+            tracing::warn!("No account exists");
+            return;
+        };
+
+        // 1. available funds should decrease by the amount disputed
+        // 2. held funds should increase by the amount disputed
+        // 3. total funds remain the same
+        tracing::debug!(txn_amount = amount);
+        acct.available_funds -= amount;
+        acct.held_funds += amount;
+
+        txn.borrow_mut().update_status(TransactionStatus::Disputed);
+        tracing::debug!("{acct:#?}");
     }
 
     /// retrieves a read-only borrow of a client account, if it exists.
-    pub fn get_or_add_account(&mut self, client_id: u16) -> &ClientAccount {
+    /// if the account does not exist with the provided client_id,
+    /// a new one is created and returned.
+    pub fn get_account(&mut self, client_id: u16) -> &ClientAccount {
         self.accounts.entry(client_id).or_insert(ClientAccount {
             available_funds: 0.0,
             total_funds: 0.0,
@@ -77,23 +111,27 @@ impl AccountManager {
     /// Withdraws an amount from an account.
     /// This will fail and return false if the account is locked
     /// or the account has insuffient funds.
-    pub fn withdraw_from_account(&mut self, client_id: u16, amount: f32) -> anyhow::Result<()> {
+    #[tracing::instrument(skip(self, amount))]
+    pub fn withdraw_from_account(&mut self, client_id: u16, amount: f32) -> bool {
         let Some(account) = self.accounts.get_mut(&client_id) else {
-            return Err(anyhow!("Account with id {client_id} does not exist"));
+            tracing::error!("Account does not exist");
+            return false;
         };
 
         if account.locked {
-            return Err(anyhow!("Current account is locked"));
+            tracing::error!("Account is locked");
+            return false;
         }
 
-        if account.available_funds.sub(amount) < 0.0 {
-            return Err(anyhow!("Account does not have enough available funds"));
+        if account.available_funds - amount < 0.0 {
+            tracing::warn!("Insufficient available funds");
+            return false;
         }
 
         account.available_funds -= amount;
         account.total_funds -= amount;
 
-        Ok(())
+        true
     }
 
     /// locks an account to prevent the account from being able to transact with other accounts.
@@ -114,13 +152,13 @@ mod tests {
         let mut act_mgr = AccountManager::default();
         act_mgr.deposit_to_account(1, 10.0);
         let did_withdraw = act_mgr.withdraw_from_account(1, 11.0);
-        assert!(did_withdraw.is_ok());
+        assert!(did_withdraw);
     }
 
     #[test]
     fn test_account_deposit() {
         let mut act_mgr = AccountManager::default();
-        let _ = act_mgr.get_or_add_account(2);
+        let _ = act_mgr.get_account(2);
         let did_deposit = act_mgr.deposit_to_account(2, 1.0);
         assert!(did_deposit);
     }

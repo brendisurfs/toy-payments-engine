@@ -55,7 +55,7 @@ pub fn read_to_payment_record(
 
 #[cfg(test)]
 mod tests {
-    use crate::transactions::Transaction;
+    use crate::transactions::{Transaction, TransactionStatus};
     use std::fs::File;
 
     use csv::StringRecord;
@@ -75,14 +75,12 @@ mod tests {
             client_id: 1,
             tx: 1,
             amount: 1.0,
+            status: TransactionStatus::Clean,
         };
 
         let record = StringRecord::from(vec!["deposit", "1", "1", "1.0"]);
         let parsed_transaction = record.deserialize::<Transaction>(None);
 
         assert!(parsed_transaction.is_ok());
-
-        // We can safely unwrap because we assert before this test.
-        // assert_eq!(parsed_transaction.unwrap(), wanted_transaction);
     }
 }
