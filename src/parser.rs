@@ -59,6 +59,7 @@ mod tests {
     use std::fs::File;
 
     use csv::StringRecord;
+    use rust_decimal_macros::dec;
 
     use crate::parser::build_csv_reader;
 
@@ -74,7 +75,7 @@ mod tests {
         let wanted_transaction = Transaction::Deposit {
             client_id: 1,
             tx: 1,
-            amount: 1.0,
+            amount: dec!(1.0),
             status: TransactionStatus::Clean,
         };
 

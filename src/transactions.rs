@@ -1,5 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 use crate::{accounts::AccountManager, parser::PaymentRecord};
@@ -20,7 +21,7 @@ pub(crate) struct RawRow {
     pub tx_kind: String,
     pub client: u16,
     pub tx: u32,
-    pub amount: Option<f32>,
+    pub amount: Option<Decimal>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -30,14 +31,14 @@ pub enum Transaction {
         #[serde(rename = "client")]
         client_id: u16,
         tx: u32,
-        amount: f32,
+        amount: Decimal,
         status: TransactionStatus,
     },
     Withdrawal {
         #[serde(rename = "client")]
         client_id: u16,
         tx: u32,
-        amount: f32,
+        amount: Decimal,
         status: TransactionStatus,
     },
 }
@@ -50,7 +51,7 @@ impl Transaction {
             Transaction::Withdrawal { tx, .. } => tx,
         }
     }
-    pub fn amount(&self) -> &f32 {
+    pub fn amount(&self) -> &Decimal {
         match self {
             Transaction::Deposit { amount, .. } => amount,
             Transaction::Withdrawal { amount, .. } => amount,
