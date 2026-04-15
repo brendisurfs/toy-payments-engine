@@ -165,10 +165,10 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
             match *txn.borrow() {
                 Transaction::Deposit {
                     client_id, amount, ..
-                } => on_deposit(manager, client_id, amount),
+                } => manager.deposit_to_account(client_id, amount),
                 Transaction::Withdrawal {
                     client_id, amount, ..
-                } => on_withdrawal(manager, client_id, amount),
+                } => manager.withdraw_from_account(client_id, amount),
             };
         }
 
@@ -192,23 +192,6 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
             }
         },
     }
-}
-
-/// Handles a deposit event by adding to an account with the provided client_id.
-fn on_deposit(manager: &mut AccountManager, client_id: u16, amount: f32) {
-    let before_account = manager.get_account(client_id);
-    tracing::debug!("Before account: {before_account:?}");
-
-    let did_deposit = manager.deposit_to_account(client_id, amount);
-    tracing::debug!("Did deposit: {did_deposit}");
-
-    let after_acct = manager.get_account(client_id);
-    tracing::debug!("After account: {after_acct:?}");
-}
-
-/// Handles a withdrawal event.
-fn on_withdrawal(manager: &mut AccountManager, client_id: u16, amount: f32) {
-    manager.withdraw_from_account(client_id, amount);
 }
 
 fn on_resolve(
