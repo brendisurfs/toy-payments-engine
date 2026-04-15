@@ -23,10 +23,6 @@ impl ClientAccount {
             ..Default::default()
         }
     }
-    /// The total funds available or held.
-    pub fn total(&self) -> Decimal {
-        self.total_funds + self.held_funds
-    }
 
     pub fn freeze(&mut self) {
         self.frozen = true;
@@ -181,26 +177,13 @@ impl AccountManager {
         tracing::debug!("{txn:#?}");
     }
 
-    pub fn get_account(&mut self, client_id: u16) -> &ClientAccount {
-        self.accounts.entry(client_id).or_insert(ClientAccount {
-            available_funds: dec!(0.0),
-            total_funds: dec!(0.0),
-            held_funds: dec!(0.0),
-            client_id,
-            frozen: false,
-        })
-    }
-
     /// Deposits a provided amount into the account associated with the provided client_id.
     /// If the client id does not exist, we create a new account.
     pub fn deposit_to_account(&mut self, client_id: u16, amount: Decimal) -> bool {
-        let account = self.accounts.entry(client_id).or_insert(ClientAccount {
-            available_funds: dec!(0.0),
-            total_funds: dec!(0.0),
-            held_funds: dec!(0.0),
-            client_id,
-            frozen: false,
-        });
+        let account = self
+            .accounts
+            .entry(client_id)
+            .or_insert(ClientAccount::new(client_id));
 
         if account.frozen {
             tracing::error!("Account is frozen, unable to deposit");
@@ -249,7 +232,7 @@ impl AccountManager {
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::accounts::AccountManager;
+    use crate::accounts::{AccountManager, ClientAccount};
 
     #[test]
     fn test_account_withdraw() {
@@ -265,9 +248,17 @@ mod tests {
 
     #[test]
     fn test_account_deposit() {
+        let client_id = 2;
         let mut act_mgr = AccountManager::default();
-        let did_deposit = act_mgr.deposit_to_account(2, dec!(1.0));
-        let _ = act_mgr.get_account(2);
+        let did_deposit = act_mgr.deposit_to_account(client_id, dec!(1.0));
+
+        let _ = {
+            let this = &mut act_mgr;
+            this.accounts
+                .entry(client_id)
+                .or_insert(ClientAccount::new(client_id))
+        };
+
         assert!(did_deposit);
     }
 }
