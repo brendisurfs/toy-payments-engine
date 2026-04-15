@@ -1,5 +1,6 @@
 use std::{collections::HashMap, ops::Sub, rc::Rc};
 
+use anyhow::anyhow;
 use serde::Serialize;
 
 use crate::transactions::Transaction;
@@ -56,10 +57,16 @@ impl AccountManager {
             locked: false,
         })
     }
+    /// Deposits a provided amount into the account associated with the provided client_id.
+    /// If the client id does not exist, we create a new account.
     pub fn deposit_to_account(&mut self, client_id: u16, amount: f32) -> bool {
-        let Some(account) = self.accounts.get_mut(&client_id) else {
-            return false;
-        };
+        let account = self.accounts.entry(client_id).or_insert(ClientAccount {
+            available_funds: 0.0,
+            total_funds: 0.0,
+            held_funds: 0.0,
+            client_id,
+            locked: false,
+        });
 
         account.available_funds += amount;
         account.total_funds += amount;
@@ -70,33 +77,31 @@ impl AccountManager {
     /// Withdraws an amount from an account.
     /// This will fail and return false if the account is locked
     /// or the account has insuffient funds.
-    pub fn withdraw_from_account(&mut self, client_id: u16, amount: f32) -> bool {
+    pub fn withdraw_from_account(&mut self, client_id: u16, amount: f32) -> anyhow::Result<()> {
         let Some(account) = self.accounts.get_mut(&client_id) else {
-            return false;
+            return Err(anyhow!("Account with id {client_id} does not exist"));
         };
 
         if account.locked {
-            return false;
+            return Err(anyhow!("Current account is locked"));
         }
 
         if account.available_funds.sub(amount) < 0.0 {
-            return false;
+            return Err(anyhow!("Account does not have enough available funds"));
         }
 
         account.available_funds -= amount;
         account.total_funds -= amount;
 
-        true
+        Ok(())
     }
 
     /// locks an account to prevent the account from being able to transact with other accounts.
     /// This should occur when a dispute is made.
     pub fn lock_account(&mut self, client_id: u16) {
-        let Some(account) = self.accounts.get_mut(&client_id) else {
-            return;
+        if let Some(account) = self.accounts.get_mut(&client_id) {
+            account.locked = true;
         };
-
-        account.locked = true;
     }
 }
 
@@ -109,7 +114,7 @@ mod tests {
         let mut act_mgr = AccountManager::default();
         act_mgr.deposit_to_account(1, 10.0);
         let did_withdraw = act_mgr.withdraw_from_account(1, 11.0);
-        assert_eq!(did_withdraw, false);
+        assert!(did_withdraw.is_ok());
     }
 
     #[test]

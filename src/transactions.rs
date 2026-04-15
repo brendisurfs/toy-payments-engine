@@ -120,7 +120,10 @@ impl TryFrom<RawRow> for PaymentEvent {
 
 /// handles the next transaction event from our stream.
 /// We match on our incoming event and calls the proper function to that event.
-pub fn on_next_event(record: PaymentRecord, manager: &mut AccountManager) -> anyhow::Result<()> {
+pub fn on_next_transaction(
+    record: PaymentRecord,
+    manager: &mut AccountManager,
+) -> anyhow::Result<()> {
     tracing::trace!("Handling transaction");
     match record {
         PaymentRecord::Transaction(txn) => {
@@ -132,6 +135,8 @@ pub fn on_next_event(record: PaymentRecord, manager: &mut AccountManager) -> any
             // here, but if this were a production system, this would possibly be changed.
             // For now, we are focusing on resource usage rather than raw hotpath performance.
             let txn = Rc::new(txn);
+
+            // write each Withdrawal and Deposit to a log we can reference later.
             manager.write_to_log(txn.clone());
 
             return match *txn {
@@ -163,6 +168,7 @@ pub fn on_next_event(record: PaymentRecord, manager: &mut AccountManager) -> any
     Ok(())
 }
 
+/// Handles a deposit event by adding to an account with the provided client_id.
 fn on_deposit(manager: &mut AccountManager, client_id: u16, amount: f32) -> anyhow::Result<()> {
     let before_account = manager.get_or_add_account(client_id);
     tracing::debug!("Before account: {before_account:?}");
@@ -170,7 +176,7 @@ fn on_deposit(manager: &mut AccountManager, client_id: u16, amount: f32) -> anyh
     let account = manager.deposit_to_account(client_id, amount);
     tracing::debug!("After deposit: {account:?}");
 
-    todo!("Implement on deposit")
+    Ok(())
 }
 
 fn on_withdrawal(manager: &mut AccountManager, client_id: u16, amount: f32) -> anyhow::Result<()> {
