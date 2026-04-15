@@ -11,8 +11,9 @@ pub struct ClientAccount {
     total_funds: f32,
     held_funds: f32,
     client_id: u16,
-    locked: bool,
+    frozen: bool,
 }
+
 impl ClientAccount {
     pub fn new(client_id: u16) -> Self {
         Self {
@@ -23,6 +24,10 @@ impl ClientAccount {
     /// The total funds available or held.
     pub fn total(&self) -> f32 {
         self.total_funds + self.held_funds
+    }
+
+    pub fn freeze(&mut self) {
+        self.frozen = true;
     }
 }
 
@@ -55,12 +60,20 @@ impl AccountManager {
 
         // Only operate on Deposit transactions
         let Transaction::Deposit {
-            client_id, amount, ..
+            client_id,
+            amount,
+            status,
+            ..
         } = *txn.borrow()
         else {
             tracing::warn!("Referenced transaction is not a Deposit");
             return;
         };
+
+        if status != TransactionStatus::Clean {
+            tracing::warn!("Transaction is not clean: {status:?}");
+            return;
+        }
 
         let Some(acct) = self.accounts.get_mut(&client_id) else {
             tracing::warn!("No account exists");
@@ -81,7 +94,7 @@ impl AccountManager {
     /// Releases associated held funds to a disputed transaction.
     /// Funds that were previously disputed are no longer disputed.
     #[tracing::instrument(skip(self))]
-    pub fn resolve_disputed_transaction(&mut self, reference_txn: u32) {
+    pub fn resolve_transaction(&mut self, reference_txn: u32) {
         let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
             tracing::warn!("No found transaction");
             return;
@@ -109,17 +122,61 @@ impl AccountManager {
             return;
         };
 
-        // 1. Clients held funds should decrease by the amount no longer disputed
-        // 2. Their available funds should increase by the amount no longer disputed
-        // 3. their total funds should remain the same.
-        // 4. the transaction should have its status updated.
-
         tracing::trace!("Updating account funds from held funds");
         account.held_funds -= amount;
         account.available_funds += amount;
+        tracing::debug!("{account:#?}");
 
         tracing::trace!("Updating transaction status");
         txn.borrow_mut().update_status(TransactionStatus::Resolved);
+        tracing::debug!("{txn:#?}");
+    }
+
+    /// Reverses a transaction, where funds that were previously held have now been withdrawn.
+    /// decreases clients held funds and total funds by the amount previously disputed.
+    /// This also freezes a clients account.
+    #[tracing::instrument(skip(self))]
+    pub fn handle_chargeback(&mut self, reference_txn: u32) {
+        let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
+            tracing::warn!("No found transaction");
+            return;
+        };
+
+        // Only operate on Deposit transactions
+        let Transaction::Deposit {
+            client_id,
+            amount,
+            status,
+            ..
+        } = *txn.borrow()
+        else {
+            tracing::warn!("Referenced transaction is not a Deposit");
+            return;
+        };
+
+        if status != TransactionStatus::Disputed {
+            tracing::warn!("Transaction is not disputed");
+            return;
+        }
+
+        // If we pass our initial checks, the account must be frozen if a withdrawal occurs.
+        let Some(account) = self.accounts.get_mut(&client_id) else {
+            tracing::warn!("No account exists");
+            return;
+        };
+
+        tracing::trace!("Freezing account");
+        account.freeze();
+
+        tracing::trace!("Updating account funds");
+        account.held_funds -= amount;
+        account.total_funds -= amount;
+        account.available_funds -= amount;
+        tracing::debug!("{account:#?}");
+
+        txn.borrow_mut()
+            .update_status(TransactionStatus::ChargedBack);
+        tracing::debug!("{txn:#?}");
     }
 
     pub fn get_account(&mut self, client_id: u16) -> &ClientAccount {
@@ -128,7 +185,7 @@ impl AccountManager {
             total_funds: 0.0,
             held_funds: 0.0,
             client_id,
-            locked: false,
+            frozen: false,
         })
     }
 
@@ -140,8 +197,13 @@ impl AccountManager {
             total_funds: 0.0,
             held_funds: 0.0,
             client_id,
-            locked: false,
+            frozen: false,
         });
+
+        if account.frozen {
+            tracing::error!("Account is frozen, unable to deposit");
+            return false;
+        }
 
         account.available_funds += amount;
         account.total_funds += amount;
@@ -159,8 +221,8 @@ impl AccountManager {
             return false;
         };
 
-        if account.locked {
-            tracing::error!("Account is locked");
+        if account.frozen {
+            tracing::error!("Account is frozen");
             return false;
         }
 
@@ -175,12 +237,9 @@ impl AccountManager {
         true
     }
 
-    /// locks an account to prevent the account from being able to transact with other accounts.
-    /// This should occur when a dispute is made.
-    pub fn lock_account(&mut self, client_id: u16) {
-        if let Some(account) = self.accounts.get_mut(&client_id) {
-            account.locked = true;
-        };
+    pub fn print_accounts(&self) {
+        let accts = &self.accounts;
+        tracing::debug!("{accts:#?}");
     }
 }
 

@@ -32,5 +32,7 @@ fn main() -> anyhow::Result<()> {
         on_next_transaction(payment_record, &mut account_manager);
     }
 
+    account_manager.print_accounts();
+
     Ok(())
 }

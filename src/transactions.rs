@@ -7,9 +7,9 @@ use crate::{accounts::AccountManager, parser::PaymentRecord};
 #[derive(Debug, Deserialize, PartialEq, Clone, Copy)]
 pub enum TransactionStatus {
     Clean,
-    Frozen,
     Disputed,
     Resolved,
+    ChargedBack,
 }
 
 /// Since the csv crate doesnt seem to allow for tagged enum variants,
@@ -41,6 +41,7 @@ pub enum Transaction {
         status: TransactionStatus,
     },
 }
+
 impl Transaction {
     /// retrieves the transaction id being referenced from the Transaction.
     pub fn id(&self) -> &u32 {
@@ -60,6 +61,13 @@ impl Transaction {
         match self {
             Transaction::Deposit { client_id, .. } => client_id,
             Transaction::Withdrawal { client_id, .. } => client_id,
+        }
+    }
+
+    pub fn status(&self) -> &TransactionStatus {
+        match self {
+            Transaction::Deposit { status, .. } => status,
+            Transaction::Withdrawal { status, .. } => status,
         }
     }
     pub fn update_status(&mut self, new_status: TransactionStatus) {
@@ -176,25 +184,14 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
             PaymentEvent::Dispute { reference_txn, .. } => {
                 manager.dispute_transaction(reference_txn)
             }
+
             PaymentEvent::Resolve { reference_txn, .. } => {
-                manager.resolve_disputed_transaction(reference_txn)
+                manager.resolve_transaction(reference_txn)
             }
-            PaymentEvent::Chargeback {
-                client_id,
-                reference_txn: reference_tx,
-            } => {
-                if let Err(why) = on_chargeback(manager, client_id, reference_tx) {
-                    tracing::error!("{why:?}");
-                };
+
+            PaymentEvent::Chargeback { reference_txn, .. } => {
+                manager.handle_chargeback(reference_txn)
             }
         },
     }
-}
-
-fn on_chargeback(
-    manager: &mut AccountManager,
-    client_id: u16,
-    reference_txn: u32,
-) -> anyhow::Result<()> {
-    todo!("Implement on_chargeback")
 }
