@@ -1,20 +1,34 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, ops::Sub, rc::Rc};
 
 use serde::Serialize;
 
 use crate::transactions::Transaction;
 
 /// Defines our structure for a single client.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct ClientAccount {
-    frozen: bool,
-    client_id: u16,
-    total_funds: f32,
     available_funds: f32,
+    total_funds: f32,
+    held_funds: f32,
+    client_id: u16,
+    locked: bool,
+}
+impl ClientAccount {
+    pub fn new(client_id: u16) -> Self {
+        Self {
+            client_id,
+            ..Default::default()
+        }
+    }
+    /// The total funds available or held.
+    pub fn total(&self) -> f32 {
+        self.total_funds + self.held_funds
+    }
 }
 
 /// primitive structure holding clients,
 /// with methods to interact between client accounts.
+#[derive(Default)]
 pub struct AccountManager {
     /// store of our accounts to interact with.
     accounts: HashMap<u16, ClientAccount>,
@@ -22,50 +36,87 @@ pub struct AccountManager {
     /// keep an log-like structure for our system to reference previous transactions.
     /// Note that this is a simple implementation, and should not be used in production due to excess memory allocation.
     /// Rather, a production setup would use an append-only database to reference previous transactions.
-    transaction_log: HashMap<u16, Rc<Transaction>>,
+    txn_log: HashMap<u32, Rc<Transaction>>,
 }
 
 impl AccountManager {
-    pub fn new() -> Self {
-        Self {
-            accounts: HashMap::new(),
-            transaction_log: HashMap::new(),
-        }
-    }
-
     pub fn write_to_log(&mut self, transaction: Rc<Transaction>) {
         tracing::trace!("Write to tx_log");
-        let tx_id = transaction.transaction_id();
-        self.transaction_log.insert(*tx_id, transaction);
+        let tx_id = transaction.id();
+        self.txn_log.insert(*tx_id, transaction);
     }
 
     /// retrieves a read-only borrow of a client account, if it exists.
-    pub fn get_account(&mut self, client_id: u16) -> &ClientAccount {
+    pub fn get_or_add_account(&mut self, client_id: u16) -> &ClientAccount {
         self.accounts.entry(client_id).or_insert(ClientAccount {
-            frozen: false,
-            client_id,
-            total_funds: 0.0,
             available_funds: 0.0,
+            total_funds: 0.0,
+            held_funds: 0.0,
+            client_id,
+            locked: false,
         })
     }
-    pub fn deposit_to_account(&mut self, client_id: u16, amount: f32) -> Option<&ClientAccount> {
+    pub fn deposit_to_account(&mut self, client_id: u16, amount: f32) -> bool {
         let Some(account) = self.accounts.get_mut(&client_id) else {
-            return None;
+            return false;
         };
 
         account.available_funds += amount;
         account.total_funds += amount;
 
-        Some(account)
+        true
     }
 
-    /// freezes an account to prevent the account from being able to transact with other accounts.
+    /// Withdraws an amount from an account.
+    /// This will fail and return false if the account is locked
+    /// or the account has insuffient funds.
+    pub fn withdraw_from_account(&mut self, client_id: u16, amount: f32) -> bool {
+        let Some(account) = self.accounts.get_mut(&client_id) else {
+            return false;
+        };
+
+        if account.locked {
+            return false;
+        }
+
+        if account.available_funds.sub(amount) < 0.0 {
+            return false;
+        }
+
+        account.available_funds -= amount;
+        account.total_funds -= amount;
+
+        true
+    }
+
+    /// locks an account to prevent the account from being able to transact with other accounts.
     /// This should occur when a dispute is made.
-    pub fn freeze_account(&mut self, client_id: u16) {
+    pub fn lock_account(&mut self, client_id: u16) {
         let Some(account) = self.accounts.get_mut(&client_id) else {
             return;
         };
 
-        account.frozen = true;
+        account.locked = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::accounts::AccountManager;
+
+    #[test]
+    fn test_account_withdraw() {
+        let mut act_mgr = AccountManager::default();
+        act_mgr.deposit_to_account(1, 10.0);
+        let did_withdraw = act_mgr.withdraw_from_account(1, 11.0);
+        assert_eq!(did_withdraw, false);
+    }
+
+    #[test]
+    fn test_account_deposit() {
+        let mut act_mgr = AccountManager::default();
+        let _ = act_mgr.get_or_add_account(2);
+        let did_deposit = act_mgr.deposit_to_account(2, 1.0);
+        assert!(did_deposit);
     }
 }

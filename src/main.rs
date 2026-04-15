@@ -3,11 +3,11 @@ mod cli;
 mod parser;
 mod transactions;
 
-use std::{fs::File, rc::Rc};
+use std::fs::File;
 
 use tracing::Level;
 
-use crate::{accounts::AccountManager, cli::parse_cli_args, transactions::on_transaction};
+use crate::{accounts::AccountManager, cli::parse_cli_args, transactions::on_next_event};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -25,20 +25,11 @@ fn main() -> anyhow::Result<()> {
     // by calling this, we automatically consume the first row (headers).
     let _ = reader.headers()?;
 
-    let mut account_manager = AccountManager::new();
+    let mut account_manager = AccountManager::default();
 
     while let Some(Ok(record)) = reader.records().next() {
-        let txn = parser::read_record_to_transaction(&record, None)?;
-
-        // we wrap the transaction in an Rc so that we arent
-        // cloning potentially a large enum variant.
-        // This allows us to share across the tx_log without our memory usage
-        // growing unruly in the case of a potentially long running system.
-        // This does come with a slight performance overhead, though not in any meaningful way
-        // here, but if this were a production system, this would possibly be changed.
-        // For now, we are focusing on resource usage rather than raw hotpath performance.
-        let txn = Rc::new(txn);
-        on_transaction(txn, &mut account_manager)?;
+        let payment_record = parser::read_to_payment_record(&record, None)?;
+        on_next_event(payment_record, &mut account_manager)?;
     }
 
     Ok(())
