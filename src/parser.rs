@@ -66,17 +66,19 @@ mod tests {
 
     #[test]
     fn test_csv_reader_builder() {
-        let data = File::open("./test.csv").expect("test file unable to open");
-        let reader = build_csv_reader(data);
+        let data = File::open("./test.csv");
+        assert!(data.is_ok());
+
+        build_csv_reader(data.unwrap());
         assert!(true);
     }
 
     #[test]
     fn test_row_parses() {
         let wanted_transaction = Transaction::Deposit {
-            client_id: 1,
-            tx: 1,
             amount: dec!(1.0),
+            transaction_id: 1,
+            client_id: 1,
             status: TransactionStatus::Clean,
         };
 
@@ -84,5 +86,10 @@ mod tests {
         let parsed_transaction = record.deserialize::<Transaction>(None);
 
         assert!(parsed_transaction.is_ok());
+
+        assert_eq!(
+            wanted_transaction,
+            parsed_transaction.expect("failed to get parsed_transaction")
+        );
     }
 }

@@ -5,6 +5,7 @@ use rust_decimal_macros::dec;
 use serde::Serialize;
 
 use crate::transactions::{Transaction, TransactionStatus};
+use tracing::{debug, error, trace, warn};
 
 /// Defines our structure for a single client.
 #[derive(Debug, Serialize, Default)]
@@ -43,8 +44,9 @@ pub struct AccountManager {
 }
 
 impl AccountManager {
+    #[tracing::instrument(skip(self, transaction), fields(txn = transaction.borrow().id()))]
     pub fn write_to_log(&mut self, transaction: Rc<RefCell<Transaction>>) {
-        tracing::trace!("Write to tx_log");
+        trace!("TXN_LOG_WRITE");
         let txn_id = *transaction.borrow().id();
         self.transaction_log.insert(txn_id, transaction);
     }
@@ -52,7 +54,7 @@ impl AccountManager {
     #[tracing::instrument(skip(self))]
     pub fn dispute_transaction(&mut self, reference_txn: u32) {
         let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
-            tracing::warn!("No found transaction");
+            warn!("No found transaction");
             return;
         };
 
@@ -64,29 +66,29 @@ impl AccountManager {
             ..
         } = *txn.borrow()
         else {
-            tracing::warn!("Referenced transaction is not a Deposit");
+            warn!("Referenced transaction is not a Deposit");
             return;
         };
 
         if status != TransactionStatus::Clean {
-            tracing::warn!("Transaction is not clean: {status:?}");
+            warn!("Transaction is not clean: {status:?}");
             return;
         }
 
         let Some(acct) = self.accounts.get_mut(&client_id) else {
-            tracing::warn!("No account exists");
+            warn!("No account exists");
             return;
         };
 
         // 1. available funds should decrease by the amount disputed
         // 2. held funds should increase by the amount disputed
         // 3. total funds remain the same
-        tracing::debug!("{amount:?}");
+        trace!("UPDATE_ACCT_FUNDS");
         acct.available_funds -= amount;
         acct.held_funds += amount;
 
+        trace!("TXN_STATUS_UPDATE");
         txn.borrow_mut().update_status(TransactionStatus::Disputed);
-        tracing::debug!("{acct:#?}");
     }
 
     /// Releases associated held funds to a disputed transaction.
@@ -94,7 +96,7 @@ impl AccountManager {
     #[tracing::instrument(skip(self))]
     pub fn resolve_transaction(&mut self, reference_txn: u32) {
         let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
-            tracing::warn!("No found transaction");
+            warn!("No found transaction");
             return;
         };
 
@@ -106,28 +108,26 @@ impl AccountManager {
             ..
         } = *txn.borrow()
         else {
-            tracing::warn!("Referenced transaction is not a Deposit");
+            warn!("Referenced transaction is not a Deposit");
             return;
         };
 
         if status != TransactionStatus::Disputed {
-            tracing::warn!("Incorrect transaction status: {status:?}");
+            warn!("Incorrect transaction status: {status:?}");
             return;
         }
 
         let Some(account) = self.accounts.get_mut(&client_id) else {
-            tracing::warn!("No account exists");
+            warn!("No account exists");
             return;
         };
 
-        tracing::trace!("Updating account funds from held funds");
+        trace!("UPDATE_ACCT_FUNDS");
         account.held_funds -= amount;
         account.available_funds += amount;
-        tracing::debug!("{account:#?}");
 
-        tracing::trace!("Updating transaction status");
+        trace!("UPDATE_TXN_STATUS");
         txn.borrow_mut().update_status(TransactionStatus::Resolved);
-        tracing::debug!("{txn:#?}");
     }
 
     /// Reverses a transaction, where funds that were previously held have now been withdrawn.
@@ -136,7 +136,7 @@ impl AccountManager {
     #[tracing::instrument(skip(self))]
     pub fn handle_chargeback(&mut self, reference_txn: u32) {
         let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
-            tracing::warn!("No found transaction");
+            warn!("No found transaction");
             return;
         };
 
@@ -148,33 +148,32 @@ impl AccountManager {
             ..
         } = *txn.borrow()
         else {
-            tracing::warn!("Referenced transaction is not a Deposit");
+            warn!("Referenced transaction is not a Deposit");
             return;
         };
 
         if status != TransactionStatus::Disputed {
-            tracing::warn!("Transaction is not disputed");
+            warn!("Transaction is not disputed");
             return;
         }
 
         // If we pass our initial checks, the account must be frozen if a withdrawal occurs.
         let Some(account) = self.accounts.get_mut(&client_id) else {
-            tracing::warn!("No account exists");
+            warn!("No account exists");
             return;
         };
 
-        tracing::trace!("Freezing account");
+        trace!("FREEZE_ACCOUNT");
         account.freeze();
 
-        tracing::trace!("Updating account funds");
+        trace!("UPDATE_ACCT_FUNDS");
         account.held_funds -= amount;
         account.total_funds -= amount;
         account.available_funds -= amount;
-        tracing::debug!("{account:#?}");
 
+        trace!("UPDATE_TXN_STATUS");
         txn.borrow_mut()
             .update_status(TransactionStatus::ChargedBack);
-        tracing::debug!("{txn:#?}");
     }
 
     /// Deposits a provided amount into the account associated with the provided client_id.
@@ -186,7 +185,7 @@ impl AccountManager {
             .or_insert(ClientAccount::new(client_id));
 
         if account.frozen {
-            tracing::error!("Account is frozen, unable to deposit");
+            error!("Account is frozen, unable to deposit");
             return false;
         }
 
@@ -200,19 +199,19 @@ impl AccountManager {
     /// This will fail and return false if the account is locked
     /// or the account has insuffient funds.
     #[tracing::instrument(skip(self, amount))]
-    pub fn withdraw_from_account(&mut self, client_id: u16, amount: Decimal) -> bool {
+    pub fn withdraw_from_account(&mut self, client_id: u16, txn_id: u32, amount: Decimal) -> bool {
         let Some(account) = self.accounts.get_mut(&client_id) else {
-            tracing::error!("Account does not exist");
+            error!("Account does not exist");
             return false;
         };
 
         if account.frozen {
-            tracing::error!("Account is frozen");
+            error!("Account is frozen");
             return false;
         }
 
         if account.available_funds - amount < dec!(0.0) {
-            tracing::warn!("Insufficient available funds");
+            warn!("Insufficient available funds");
             return false;
         }
 
@@ -222,9 +221,10 @@ impl AccountManager {
         true
     }
 
+    // TODO: write out to an actual csv, not just print.
     pub fn print_accounts(&self) {
         let accts = &self.accounts;
-        tracing::debug!("{accts:#?}");
+        debug!("{accts:#?}");
     }
 }
 
@@ -238,11 +238,11 @@ mod tests {
     fn test_account_withdraw() {
         let mut act_mgr = AccountManager::default();
         act_mgr.deposit_to_account(1, dec!(10.0));
-        let did_withdraw = act_mgr.withdraw_from_account(1, dec!(11.0));
+        let did_withdraw = act_mgr.withdraw_from_account(1, 1, dec!(11.0));
         assert_eq!(did_withdraw, false);
 
         act_mgr.deposit_to_account(1, dec!(10.0));
-        let did_withdraw = act_mgr.withdraw_from_account(1, dec!(9.0));
+        let did_withdraw = act_mgr.withdraw_from_account(1, 2, dec!(9.0));
         assert!(did_withdraw);
     }
 

@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use tracing::Span;
 
 use crate::{accounts::AccountManager, parser::PaymentRecord};
 
@@ -15,6 +16,8 @@ pub enum TransactionStatus {
 
 /// Since the csv crate doesnt seem to allow for tagged enum variants,
 /// we need to implement our own row struct that can be parsed.
+/// Note that these fields are requires to be in order:
+/// tx_kind, client, tx, amount. This matches the exact row order.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawRow {
     #[serde(rename = "type")]
@@ -30,14 +33,14 @@ pub enum Transaction {
     Deposit {
         #[serde(rename = "client")]
         client_id: u16,
-        tx: u32,
+        transaction_id: u32,
         amount: Decimal,
         status: TransactionStatus,
     },
     Withdrawal {
         #[serde(rename = "client")]
         client_id: u16,
-        tx: u32,
+        transaction_id: u32,
         amount: Decimal,
         status: TransactionStatus,
     },
@@ -47,30 +50,11 @@ impl Transaction {
     /// retrieves the transaction id being referenced from the Transaction.
     pub fn id(&self) -> &u32 {
         match self {
-            Transaction::Deposit { tx, .. } => tx,
-            Transaction::Withdrawal { tx, .. } => tx,
-        }
-    }
-    pub fn amount(&self) -> &Decimal {
-        match self {
-            Transaction::Deposit { amount, .. } => amount,
-            Transaction::Withdrawal { amount, .. } => amount,
+            Transaction::Deposit { transaction_id, .. } => transaction_id,
+            Transaction::Withdrawal { transaction_id, .. } => transaction_id,
         }
     }
 
-    pub fn client_id(&self) -> &u16 {
-        match self {
-            Transaction::Deposit { client_id, .. } => client_id,
-            Transaction::Withdrawal { client_id, .. } => client_id,
-        }
-    }
-
-    pub fn status(&self) -> &TransactionStatus {
-        match self {
-            Transaction::Deposit { status, .. } => status,
-            Transaction::Withdrawal { status, .. } => status,
-        }
-    }
     pub fn update_status(&mut self, new_status: TransactionStatus) {
         match self {
             Transaction::Deposit { status, .. } => {
@@ -92,15 +76,15 @@ impl TryFrom<RawRow> for Transaction {
         match value.tx_kind.trim() {
             "deposit" => Ok(Transaction::Deposit {
                 amount,
-                tx: value.tx,
                 client_id: value.client,
+                transaction_id: value.tx,
                 status: TransactionStatus::Clean,
             }),
 
             "withdrawal" => Ok(Transaction::Withdrawal {
                 amount,
-                tx: value.tx,
                 client_id: value.client,
+                transaction_id: value.tx,
                 status: TransactionStatus::Clean,
             }),
 
@@ -115,19 +99,19 @@ impl TryFrom<RawRow> for Transaction {
 pub enum PaymentEvent {
     Dispute {
         #[serde(rename = "tx")]
-        reference_txn: u32,
+        reference_txn_id: u32,
         #[serde(rename = "client")]
         client_id: u16,
     },
     Resolve {
         #[serde(rename = "tx")]
-        reference_txn: u32,
+        reference_txn_id: u32,
         #[serde(rename = "client")]
         client_id: u16,
     },
     Chargeback {
         #[serde(rename = "tx")]
-        reference_txn: u32,
+        reference_txn_id: u32,
         #[serde(rename = "client")]
         client_id: u16,
     },
@@ -139,15 +123,15 @@ impl TryFrom<RawRow> for PaymentEvent {
         match value.tx_kind.trim() {
             "dispute" => Ok(PaymentEvent::Dispute {
                 client_id: value.client,
-                reference_txn: value.tx,
+                reference_txn_id: value.tx,
             }),
             "resolve" => Ok(PaymentEvent::Resolve {
                 client_id: value.client,
-                reference_txn: value.tx,
+                reference_txn_id: value.tx,
             }),
             "chargeback" => Ok(PaymentEvent::Chargeback {
                 client_id: value.client,
-                reference_txn: value.tx,
+                reference_txn_id: value.tx,
             }),
             other => Err(format!("Unknown transaction type: {other:?}")),
         }
@@ -163,9 +147,10 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
             // cloning potentially a large enum variant.
             // This allows us to share across the tx_log without our memory usage
             // growing unruly in the case of a potentially long running system.
-            // This does come with a slight performance overhead, though not in any meaningful way
-            // here, but if this were a production system, this would possibly be changed.
-            // For now, we are focusing on resource usage rather than raw hotpath performance.
+            // This does come with a slight performance overhead,
+            // though not in any meaningful way here,
+            // but if this were a production system, this would possibly be changed.
+            // For now, we are focusing on correctness and cleanliness rather than raw hotpath performance.
             let txn = Rc::new(RefCell::new(txn));
 
             // write each Withdrawal and Deposit to a log we can reference later.
@@ -173,26 +158,41 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
 
             match *txn.borrow() {
                 Transaction::Deposit {
-                    client_id, amount, ..
-                } => manager.deposit_to_account(client_id, amount),
+                    transaction_id,
+                    client_id,
+                    amount,
+                    ..
+                } => {
+                    Span::current().record("txn_id", transaction_id);
+                    manager.deposit_to_account(client_id, amount)
+                }
                 Transaction::Withdrawal {
-                    client_id, amount, ..
-                } => manager.withdraw_from_account(client_id, amount),
+                    transaction_id,
+                    client_id,
+                    amount,
+                    ..
+                } => {
+                    Span::current().record("txn_id", transaction_id);
+                    manager.withdraw_from_account(client_id, transaction_id, amount)
+                }
             };
         }
 
         PaymentRecord::MutatingEvent(event) => match event {
-            PaymentEvent::Dispute { reference_txn, .. } => {
-                manager.dispute_transaction(reference_txn)
-            }
+            PaymentEvent::Dispute {
+                reference_txn_id: reference_txn,
+                ..
+            } => manager.dispute_transaction(reference_txn),
 
-            PaymentEvent::Resolve { reference_txn, .. } => {
-                manager.resolve_transaction(reference_txn)
-            }
+            PaymentEvent::Resolve {
+                reference_txn_id: reference_txn,
+                ..
+            } => manager.resolve_transaction(reference_txn),
 
-            PaymentEvent::Chargeback { reference_txn, .. } => {
-                manager.handle_chargeback(reference_txn)
-            }
+            PaymentEvent::Chargeback {
+                reference_txn_id: reference_txn,
+                ..
+            } => manager.handle_chargeback(reference_txn),
         },
     }
 }

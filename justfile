@@ -1,5 +1,9 @@
 test:
   cargo test -- --nocapture
 
-run: 
+run-debug: 
   cargo run -- test.csv
+
+
+run-release: 
+  cargo run --release -- test.csv

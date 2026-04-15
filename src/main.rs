@@ -6,11 +6,13 @@ mod transactions;
 use std::fs::File;
 
 use tracing::Level;
+use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::{accounts::AccountManager, cli::parse_cli_args, transactions::on_next_transaction};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::CLOSE)
         .with_max_level(Level::TRACE)
         .with_line_number(true)
         .with_target(false)
