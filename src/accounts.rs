@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, ops::DerefMut, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use serde::Serialize;
 
@@ -46,11 +46,6 @@ impl AccountManager {
         self.transaction_log.insert(txn_id, transaction);
     }
 
-    /// Retrieves a reference to a Transaction from the transaction log, if it exists.
-    pub fn get_transaction(&self, reference_txn: u32) -> Option<Rc<RefCell<Transaction>>> {
-        self.transaction_log.get(&reference_txn).cloned()
-    }
-
     #[tracing::instrument(skip(self))]
     pub fn dispute_transaction(&mut self, reference_txn: u32) {
         let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
@@ -58,9 +53,13 @@ impl AccountManager {
             return;
         };
 
-        let (client_id, amount) = {
-            let borrower = txn.borrow();
-            (*borrower.client_id(), *borrower.amount())
+        // Only operate on Deposit transactions
+        let Transaction::Deposit {
+            client_id, amount, ..
+        } = *txn.borrow()
+        else {
+            tracing::warn!("Referenced transaction is not a Deposit");
+            return;
         };
 
         let Some(acct) = self.accounts.get_mut(&client_id) else {
@@ -79,9 +78,50 @@ impl AccountManager {
         tracing::debug!("{acct:#?}");
     }
 
-    /// retrieves a read-only borrow of a client account, if it exists.
-    /// if the account does not exist with the provided client_id,
-    /// a new one is created and returned.
+    /// Releases associated held funds to a disputed transaction.
+    /// Funds that were previously disputed are no longer disputed.
+    #[tracing::instrument(skip(self))]
+    pub fn resolve_disputed_transaction(&mut self, reference_txn: u32) {
+        let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
+            tracing::warn!("No found transaction");
+            return;
+        };
+
+        // Only operate on Deposit transactions
+        let Transaction::Deposit {
+            client_id,
+            amount,
+            status,
+            ..
+        } = *txn.borrow()
+        else {
+            tracing::warn!("Referenced transaction is not a Deposit");
+            return;
+        };
+
+        if status != TransactionStatus::Disputed {
+            tracing::warn!("Incorrect transaction status: {status:?}");
+            return;
+        }
+
+        let Some(account) = self.accounts.get_mut(&client_id) else {
+            tracing::warn!("No account exists");
+            return;
+        };
+
+        // 1. Clients held funds should decrease by the amount no longer disputed
+        // 2. Their available funds should increase by the amount no longer disputed
+        // 3. their total funds should remain the same.
+        // 4. the transaction should have its status updated.
+
+        tracing::trace!("Updating account funds from held funds");
+        account.held_funds -= amount;
+        account.available_funds += amount;
+
+        tracing::trace!("Updating transaction status");
+        txn.borrow_mut().update_status(TransactionStatus::Resolved);
+    }
+
     pub fn get_account(&mut self, client_id: u16) -> &ClientAccount {
         self.accounts.entry(client_id).or_insert(ClientAccount {
             available_funds: 0.0,
@@ -91,6 +131,7 @@ impl AccountManager {
             locked: false,
         })
     }
+
     /// Deposits a provided amount into the account associated with the provided client_id.
     /// If the client id does not exist, we create a new account.
     pub fn deposit_to_account(&mut self, client_id: u16, amount: f32) -> bool {

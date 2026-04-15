@@ -106,19 +106,19 @@ impl TryFrom<RawRow> for Transaction {
 pub enum PaymentEvent {
     Dispute {
         #[serde(rename = "tx")]
-        reference_tx: u32,
+        reference_txn: u32,
         #[serde(rename = "client")]
         client_id: u16,
     },
     Resolve {
         #[serde(rename = "tx")]
-        reference_tx: u32,
+        reference_txn: u32,
         #[serde(rename = "client")]
         client_id: u16,
     },
     Chargeback {
         #[serde(rename = "tx")]
-        reference_tx: u32,
+        reference_txn: u32,
         #[serde(rename = "client")]
         client_id: u16,
     },
@@ -130,15 +130,15 @@ impl TryFrom<RawRow> for PaymentEvent {
         match value.tx_kind.trim() {
             "dispute" => Ok(PaymentEvent::Dispute {
                 client_id: value.client,
-                reference_tx: value.tx,
+                reference_txn: value.tx,
             }),
             "resolve" => Ok(PaymentEvent::Resolve {
                 client_id: value.client,
-                reference_tx: value.tx,
+                reference_txn: value.tx,
             }),
             "chargeback" => Ok(PaymentEvent::Chargeback {
                 client_id: value.client,
-                reference_tx: value.tx,
+                reference_txn: value.tx,
             }),
             other => Err(format!("Unknown transaction type: {other:?}")),
         }
@@ -150,7 +150,7 @@ impl TryFrom<RawRow> for PaymentEvent {
 pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) {
     match record {
         PaymentRecord::Transaction(txn) => {
-            // we wrap the transaction in an Rc so that we arent
+            // we wrap the transaction in an Rc<RefCell<T>> so that we arent
             // cloning potentially a large enum variant.
             // This allows us to share across the tx_log without our memory usage
             // growing unruly in the case of a potentially long running system.
@@ -173,18 +173,15 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
         }
 
         PaymentRecord::MutatingEvent(event) => match event {
-            PaymentEvent::Dispute { reference_tx, .. } => manager.dispute_transaction(reference_tx),
-            PaymentEvent::Resolve {
-                client_id,
-                reference_tx,
-            } => {
-                if let Err(why) = on_resolve(manager, client_id, reference_tx) {
-                    tracing::error!("{why:?}");
-                };
+            PaymentEvent::Dispute { reference_txn, .. } => {
+                manager.dispute_transaction(reference_txn)
+            }
+            PaymentEvent::Resolve { reference_txn, .. } => {
+                manager.resolve_disputed_transaction(reference_txn)
             }
             PaymentEvent::Chargeback {
                 client_id,
-                reference_tx,
+                reference_txn: reference_tx,
             } => {
                 if let Err(why) = on_chargeback(manager, client_id, reference_tx) {
                     tracing::error!("{why:?}");
@@ -192,14 +189,6 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
             }
         },
     }
-}
-
-fn on_resolve(
-    manager: &mut AccountManager,
-    client_id: u16,
-    reference_txn: u32,
-) -> anyhow::Result<()> {
-    todo!("Implement on_resolve")
 }
 
 fn on_chargeback(
