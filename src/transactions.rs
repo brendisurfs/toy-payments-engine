@@ -180,19 +180,16 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
 
         PaymentRecord::MutatingEvent(event) => match event {
             PaymentEvent::Dispute {
-                reference_txn_id: reference_txn,
-                ..
-            } => manager.dispute_transaction(reference_txn),
+                reference_txn_id, ..
+            } => manager.dispute_transaction(reference_txn_id),
 
             PaymentEvent::Resolve {
-                reference_txn_id: reference_txn,
-                ..
-            } => manager.resolve_transaction(reference_txn),
+                reference_txn_id, ..
+            } => manager.resolve_transaction(reference_txn_id),
 
             PaymentEvent::Chargeback {
-                reference_txn_id: reference_txn,
-                ..
-            } => manager.handle_chargeback(reference_txn),
+                reference_txn_id, ..
+            } => manager.handle_chargeback(reference_txn_id),
         },
     }
 }
