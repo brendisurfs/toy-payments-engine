@@ -147,9 +147,6 @@ impl TryFrom<RawRow> for PaymentEvent {
 pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) {
     match record {
         PaymentRecord::Transaction(txn) => {
-            // write each Withdrawal and Deposit to a log we can reference later.
-            manager.write_to_log(txn.clone());
-
             match txn {
                 Transaction::Deposit {
                     transaction_id,
@@ -158,6 +155,9 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
                     ..
                 } => {
                     Span::current().record("txn_id", transaction_id);
+                    // In this project, only write Deposits to
+                    // the transaction log.
+                    manager.write_to_log(txn.clone());
                     manager.deposit_to_account(client_id, amount)
                 }
                 Transaction::Withdrawal {
