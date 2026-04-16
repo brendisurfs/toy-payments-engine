@@ -176,12 +176,12 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
             PaymentEvent::Dispute {
                 reference_txn_id,
                 client_id,
-            } => manager.dispute_transaction(&reference_txn_id, &client_id),
+            } => manager.dispute_transaction(reference_txn_id, client_id),
 
             PaymentEvent::Resolve {
                 reference_txn_id,
                 client_id,
-            } => manager.resolve_transaction(&reference_txn_id, &client_id),
+            } => manager.resolve_transaction(reference_txn_id, client_id),
 
             PaymentEvent::Chargeback {
                 reference_txn_id,

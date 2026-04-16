@@ -67,19 +67,19 @@ impl AccountManager {
     }
 
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
-    pub fn dispute_transaction(&mut self, ref_txn_id: &u32, ref_client_id: &u16) {
+    pub fn dispute_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
         let Some(Transaction::Deposit {
             client_id,
             amount,
             status,
             ..
-        }) = self.transaction_log.get_mut(ref_txn_id)
+        }) = self.transaction_log.get_mut(&ref_txn_id)
         else {
             warn!("No Deposit transaction found with id {ref_txn_id}");
             return;
         };
 
-        if client_id != ref_client_id {
+        if client_id != &ref_client_id {
             warn!(
                 client_id = client_id,
                 ref_client_id = ref_client_id,
@@ -109,19 +109,19 @@ impl AccountManager {
     /// Releases associated held funds to a disputed transaction.
     /// Funds that were previously disputed are no longer disputed.
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
-    pub fn resolve_transaction(&mut self, ref_txn_id: &u32, ref_client_id: &u16) {
+    pub fn resolve_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
         let Some(Transaction::Deposit {
             client_id,
             amount,
             status,
             ..
-        }) = self.transaction_log.get_mut(ref_txn_id)
+        }) = self.transaction_log.get_mut(&ref_txn_id)
         else {
             warn!("No Deposit transaction found with id {ref_txn_id}");
             return;
         };
 
-        if client_id != ref_client_id {
+        if client_id != &ref_client_id {
             warn!(
                 client_id = client_id,
                 ref_client_id = ref_client_id,
@@ -315,7 +315,7 @@ mod tests {
 
         mgr.write_to_log(txn_one.clone());
         mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
-        mgr.dispute_transaction(txn_one.id(), txn_one.client_id());
+        mgr.dispute_transaction(*txn_one.id(), *txn_one.client_id());
 
         let Some(account) = mgr.accounts.get(txn_one.client_id()) else {
             panic!("Account not found!");
@@ -339,7 +339,7 @@ mod tests {
 
         mgr.write_to_log(txn_one.clone());
         mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
-        mgr.resolve_transaction(txn_one.id(), txn_one.client_id());
+        mgr.resolve_transaction(*txn_one.id(), *txn_one.client_id());
 
         let Some(account) = mgr.accounts.get(txn_one.client_id()) else {
             panic!("Account not found!");
