@@ -20,6 +20,10 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let args = parse_cli_args()?;
+
+    // With this example, we parse an input file.
+    // However, this could easily be abstracted out to a tcp server
+    // by moving where the parsing happens.
     let file = File::open(&args.input_file_path)?;
     let mut reader = parser::build_csv_reader(file);
 

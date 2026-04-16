@@ -51,9 +51,9 @@ impl AccountManager {
         self.transaction_log.insert(txn_id, transaction);
     }
 
-    #[tracing::instrument(skip(self))]
-    pub fn dispute_transaction(&mut self, reference_txn: u32) {
-        let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
+    #[tracing::instrument(skip(self), fields(txn_id = reference_txn_id))]
+    pub fn dispute_transaction(&mut self, reference_txn_id: u32) {
+        let Some(txn) = self.transaction_log.get_mut(&reference_txn_id) else {
             warn!("No found transaction");
             return;
         };
@@ -93,9 +93,9 @@ impl AccountManager {
 
     /// Releases associated held funds to a disputed transaction.
     /// Funds that were previously disputed are no longer disputed.
-    #[tracing::instrument(skip(self))]
-    pub fn resolve_transaction(&mut self, reference_txn: u32) {
-        let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
+    #[tracing::instrument(skip(self), fields(txn_id = reference_txn_id))]
+    pub fn resolve_transaction(&mut self, reference_txn_id: u32) {
+        let Some(txn) = self.transaction_log.get_mut(&reference_txn_id) else {
             warn!("No found transaction");
             return;
         };
@@ -133,9 +133,9 @@ impl AccountManager {
     /// Reverses a transaction, where funds that were previously held have now been withdrawn.
     /// decreases clients held funds and total funds by the amount previously disputed.
     /// This also freezes a clients account.
-    #[tracing::instrument(skip(self))]
-    pub fn handle_chargeback(&mut self, reference_txn: u32) {
-        let Some(txn) = self.transaction_log.get_mut(&reference_txn) else {
+    #[tracing::instrument(skip(self), fields(txn_id = reference_txn_id))]
+    pub fn handle_chargeback(&mut self, reference_txn_id: u32) {
+        let Some(txn) = self.transaction_log.get_mut(&reference_txn_id) else {
             warn!("No found transaction");
             return;
         };

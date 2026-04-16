@@ -1,7 +1,7 @@
 test:
   cargo test -- --nocapture
 
-run-debug: 
+run: 
   cargo run -- test.csv
 
 
