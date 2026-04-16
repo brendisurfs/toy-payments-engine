@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -58,12 +58,14 @@ impl AccountManager {
         trace!("TXN_LOG_WRITE");
         let txn_id = transaction.id();
 
-        if self.transaction_log.contains_key(&txn_id) {
-            warn!("Duplicate transaction id {txn_id}, ignoring");
-            return;
+        match self.transaction_log.entry(txn_id) {
+            Entry::Occupied(_) => {
+                warn!("Duplicate transaction id {txn_id}, ignoring");
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(transaction);
+            }
         }
-
-        self.transaction_log.insert(txn_id, transaction);
     }
 
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
