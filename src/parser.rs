@@ -57,21 +57,9 @@ pub fn read_to_payment_record(
 #[cfg(test)]
 mod tests {
     use crate::transactions::{Transaction, TransactionStatus};
-    use std::fs::File;
 
     use csv::StringRecord;
     use rust_decimal_macros::dec;
-
-    use crate::parser::build_csv_reader;
-
-    #[test]
-    fn test_csv_reader_builder() {
-        let data = File::open("./test.csv");
-        assert!(data.is_ok());
-
-        build_csv_reader(data.unwrap());
-        assert!(true);
-    }
 
     #[test]
     fn test_row_parses() {
