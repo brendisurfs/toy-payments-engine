@@ -122,9 +122,11 @@ so plugging in a TCP stream in place of a file is a trivial change.
 As of the year 2026, AI has become a prevalent tool used by many software engineers. 
 I am no exception, and for the safety of future software, I believe it is important to be fully transparent and explicit about AI use.
 
-I used AI as a code reviewer across multiple iterations, identifying hidden control flow bugs, flagging antipatterns, extended transaction data for testing, and helping explain *why* something was wrong.
-I refused to let AI write implementation code for me.
-I did not use AI until I had a foundation architecture laid out and I ran through ideas for solving this challenge.
+I used AI as a code reviewer across multiple iterations, 
+prompting it with my existing code and asked it to review specific concerns, such as correctness of fund accounting logic, 
+flagging antipatterns, and deliberate transaction data for testing.
+I did not prompt it to generate solutions, scaffolding, or write implementation code for me.
+I did not bring it in until I had a foundation architecture laid out and I had reasoned through the problem myself. 
 
 ### What AI caught
 
