@@ -197,11 +197,11 @@ impl AccountManager {
 
     /// Deposits a provided amount into the account associated with the provided client_id.
     /// If the client id does not exist, we create a new account.
-    pub fn deposit_to_account(&mut self, client_id: &u16, amount: Decimal) -> bool {
+    pub fn deposit_to_account(&mut self, client_id: u16, amount: Decimal) -> bool {
         let account = self
             .accounts
-            .entry(*client_id)
-            .or_insert(ClientAccount::new(*client_id));
+            .entry(client_id)
+            .or_insert(ClientAccount::new(client_id));
 
         if account.frozen {
             error!("Account is frozen, unable to deposit");
@@ -271,11 +271,11 @@ mod tests {
         let mut act_mgr = AccountManager::default();
         let client_id = 1;
         let txn_id = 1;
-        act_mgr.deposit_to_account(&client_id, dec!(10.0));
+        act_mgr.deposit_to_account(client_id, dec!(10.0));
         let did_withdraw = act_mgr.withdraw_from_account(client_id, txn_id, dec!(11.0));
         assert_eq!(did_withdraw, false);
 
-        act_mgr.deposit_to_account(&1, dec!(10.0));
+        act_mgr.deposit_to_account(client_id, dec!(10.0));
         let txn_id = 2;
         let did_withdraw = act_mgr.withdraw_from_account(client_id, txn_id, dec!(9.0));
         assert!(did_withdraw);
@@ -285,7 +285,7 @@ mod tests {
     fn test_account_deposit() {
         let client_id = 2;
         let mut act_mgr = AccountManager::default();
-        let did_deposit = act_mgr.deposit_to_account(&client_id, dec!(1.0));
+        let did_deposit = act_mgr.deposit_to_account(client_id, dec!(1.0));
 
         let _ = {
             let this = &mut act_mgr;
@@ -309,7 +309,7 @@ mod tests {
         };
 
         mgr.write_to_log(txn_one.clone());
-        mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
+        mgr.deposit_to_account(*txn_one.client_id(), txn_one.amount());
         mgr.dispute_transaction(*txn_one.id(), *txn_one.client_id());
 
         let Some(account) = mgr.accounts.get(txn_one.client_id()) else {
@@ -333,7 +333,8 @@ mod tests {
         };
 
         mgr.write_to_log(txn_one.clone());
-        mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
+        mgr.deposit_to_account(*txn_one.client_id(), txn_one.amount());
+        mgr.dispute_transaction(*txn_one.id(), *txn_one.client_id());
         mgr.resolve_transaction(*txn_one.id(), *txn_one.client_id());
 
         let Some(account) = mgr.accounts.get(txn_one.client_id()) else {

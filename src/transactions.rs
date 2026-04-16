@@ -158,7 +158,7 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
                     ..
                 } => {
                     Span::current().record("txn_id", transaction_id);
-                    manager.deposit_to_account(&client_id, amount)
+                    manager.deposit_to_account(client_id, amount)
                 }
                 Transaction::Withdrawal {
                     transaction_id,
