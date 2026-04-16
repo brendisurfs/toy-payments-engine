@@ -155,8 +155,7 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
                     ..
                 } => {
                     Span::current().record("txn_id", transaction_id);
-                    // In this project, only write Deposits to
-                    // the transaction log.
+                    // In this project, only write Deposits to the transaction log.
                     manager.write_to_log(txn.clone());
                     manager.deposit_to_account(client_id, amount)
                 }

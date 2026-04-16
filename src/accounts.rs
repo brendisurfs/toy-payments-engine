@@ -5,7 +5,7 @@ use rust_decimal_macros::dec;
 use serde::Serialize;
 
 use crate::transactions::{Transaction, TransactionStatus};
-use tracing::{error, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 /// Defines our structure for a single client.
 #[derive(Debug, Default, Serialize)]
@@ -63,7 +63,7 @@ pub struct AccountManager {
 }
 
 impl AccountManager {
-    #[tracing::instrument(skip(self, transaction), fields(txn = transaction.id()))]
+    #[tracing::instrument(skip(self, transaction), fields(client_id = transaction.client_id(), txn = transaction.id()))]
     pub fn write_to_log(&mut self, transaction: Transaction) {
         trace!("TXN_LOG_WRITE");
         let txn_id = transaction.id();
@@ -78,7 +78,7 @@ impl AccountManager {
         }
     }
 
-    #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
+    #[tracing::instrument(skip(self))]
     pub fn dispute_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
         let Some(Transaction::Deposit {
             client_id,
@@ -120,7 +120,7 @@ impl AccountManager {
 
     /// Releases associated held funds to a disputed transaction.
     /// Funds that were previously disputed are no longer disputed.
-    #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
+    #[tracing::instrument(skip(self))]
     pub fn resolve_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
         let Some(Transaction::Deposit {
             client_id,
@@ -156,14 +156,14 @@ impl AccountManager {
         account.held_funds -= *amount;
         account.available_funds += *amount;
 
-        trace!("UPDATE_TXN_STATUS");
         *status = TransactionStatus::Resolved;
+        debug!(status = ?status, "UPDATE_TXN_STATUS");
     }
 
     /// Reverses a transaction, where funds that were previously held have now been withdrawn.
     /// decreases clients held funds and total funds by the amount previously disputed.
     /// This also freezes a clients account.
-    #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
+    #[tracing::instrument(skip(self))]
     pub fn handle_chargeback(&mut self, ref_txn_id: u32, ref_client_id: u16) {
         let Some(Transaction::Deposit {
             client_id,
@@ -209,6 +209,7 @@ impl AccountManager {
 
     /// Deposits a provided amount into the account associated with the provided client_id.
     /// If the client id does not exist, we create a new account.
+    #[tracing::instrument(skip(self, amount))]
     pub fn deposit_to_account(&mut self, client_id: u16, amount: Decimal) -> bool {
         let account = self
             .accounts

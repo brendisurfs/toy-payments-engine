@@ -49,7 +49,9 @@ The dataset is never fully loaded into memory, which allows for arbitrarily larg
 
 ### In-Memory Transaction Log
 
-The `HashMap<u32, Transaction>` log in `AccountManager` is an architectural limitation, as it grows with every deposit and withdrawal. 
+The `HashMap<u32, Transaction>` log in `AccountManager` is an architectural limitation, as it grows with every deposit. 
+I deliberately chose to store only `Deposit` transactions as these are the only transactions subject to dispute.
+Withdrawals represent funds already debited from the account, and reversing them would involve different settlement mechanics outside the scope of this implementation. 
 I initially started with storing transactions inside the transaction_log as `Rc<RefCell<Transaction>>`, but `Transaction` is small in size and the added complexity did not align with the overall goals of this project.
 The current implementation is acceptable for a toy project like this. In production, however, an append-only database would be more appropriate, offering durability and crash recovery. 
 
@@ -121,7 +123,7 @@ As of the year 2026, AI has become a prevalent tool used by many software engine
 However, I used AI a bit differently than others may use for a project like this. 
 
 I used AI as a code reviewer across multiple iterations, identifying hidden control flow bugs, flagging antipatterns, extended transaction data for testing, and helping explain *why* something was wrong.
-I refused to let AI write code for me or show me code. 
+I refused to let AI write implementation code for me.
 I did not use AI until I had a foundation architecture laid out and I ran through ideas for solving this challenge.
 
 ### What AI caught
