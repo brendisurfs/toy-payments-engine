@@ -109,7 +109,7 @@ Invalid state transitions, such as resolving a non-disputed transaction, are log
 The current implementation is intentionally single-threaded. 
 The `AccountManager` owns all state with no shared memory primitives needed.
 
-A Naive concurrent extension would wrap shared state in `Arc<Mutex<AccountManager>>`, creating one lock for all state. 
+A naive concurrent extension would wrap shared state in `Arc<Mutex<AccountManager>>`, creating one lock for all state. 
 This works, but would create a bottleneck as concurrent TCP streams serialize on that lock, eliminating the entire benefit of concurrency under high load. 
 
 A more production-oriented approach would be to eliminate the in-memory transaction log entirely, in favor of an external append-only store, such as Postgres with a transactions table.
