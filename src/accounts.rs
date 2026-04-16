@@ -218,13 +218,8 @@ impl AccountManager {
     /// This will fail and return false if the account is locked
     /// or the account has insuffient funds.
     #[tracing::instrument(skip(self, amount))]
-    pub fn withdraw_from_account(
-        &mut self,
-        client_id: &u16,
-        txn_id: &u32,
-        amount: &Decimal,
-    ) -> bool {
-        let Some(account) = self.accounts.get_mut(client_id) else {
+    pub fn withdraw_from_account(&mut self, client_id: u16, txn_id: u32, amount: Decimal) -> bool {
+        let Some(account) = self.accounts.get_mut(&client_id) else {
             error!("Account does not exist");
             return false;
         };
@@ -277,12 +272,12 @@ mod tests {
         let client_id = 1;
         let txn_id = 1;
         act_mgr.deposit_to_account(&client_id, dec!(10.0));
-        let did_withdraw = act_mgr.withdraw_from_account(&client_id, &txn_id, &dec!(11.0));
+        let did_withdraw = act_mgr.withdraw_from_account(client_id, txn_id, dec!(11.0));
         assert_eq!(did_withdraw, false);
 
         act_mgr.deposit_to_account(&1, dec!(10.0));
         let txn_id = 2;
-        let did_withdraw = act_mgr.withdraw_from_account(&client_id, &txn_id, &dec!(9.0));
+        let did_withdraw = act_mgr.withdraw_from_account(client_id, txn_id, dec!(9.0));
         assert!(did_withdraw);
     }
 
