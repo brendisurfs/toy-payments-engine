@@ -109,19 +109,19 @@ impl AccountManager {
     /// Releases associated held funds to a disputed transaction.
     /// Funds that were previously disputed are no longer disputed.
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
-    pub fn resolve_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
+    pub fn resolve_transaction(&mut self, ref_txn_id: &u32, ref_client_id: &u16) {
         let Some(Transaction::Deposit {
             client_id,
             amount,
             status,
             ..
-        }) = self.transaction_log.get_mut(&ref_txn_id)
+        }) = self.transaction_log.get_mut(ref_txn_id)
         else {
             warn!("No Deposit transaction found with id {ref_txn_id}");
             return;
         };
 
-        if client_id != &ref_client_id {
+        if client_id != ref_client_id {
             warn!(
                 client_id = client_id,
                 ref_client_id = ref_client_id,
@@ -135,7 +135,7 @@ impl AccountManager {
             return;
         }
 
-        let Some(account) = self.accounts.get_mut(&client_id) else {
+        let Some(account) = self.accounts.get_mut(client_id) else {
             warn!("No account exists");
             return;
         };
@@ -327,5 +327,26 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve() {}
+    fn test_resolve() {
+        let mut mgr = AccountManager::default();
+
+        let txn_one = Transaction::Deposit {
+            client_id: 1,
+            transaction_id: 1,
+            amount: dec!(100.0),
+            status: TransactionStatus::Clean,
+        };
+
+        mgr.write_to_log(txn_one.clone());
+        mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
+        mgr.resolve_transaction(txn_one.id(), txn_one.client_id());
+
+        let Some(account) = mgr.accounts.get(txn_one.client_id()) else {
+            panic!("Account not found!");
+        };
+
+        assert_eq!(account.available_funds, dec!(100.0));
+        assert_eq!(account.held_funds, dec!(0.0));
+        assert_eq!(account.total_funds, dec!(100.0));
+    }
 }
