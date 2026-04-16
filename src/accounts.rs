@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -49,39 +49,33 @@ pub struct AccountManager {
     /// keep an log-like structure for our system to reference previous transactions.
     /// Note that this is a simple implementation, and should not be used in production due to excess memory allocation.
     /// Rather, a production setup would use an append-only database to reference previous transactions.
-    transaction_log: HashMap<u32, Rc<RefCell<Transaction>>>,
+    transaction_log: HashMap<u32, Transaction>,
 }
 
 impl AccountManager {
-    #[tracing::instrument(skip(self, transaction), fields(txn = transaction.borrow().id()))]
-    pub fn write_to_log(&mut self, transaction: Rc<RefCell<Transaction>>) {
+    #[tracing::instrument(skip(self, transaction), fields(txn = transaction.id()))]
+    pub fn write_to_log(&mut self, transaction: Transaction) {
         trace!("TXN_LOG_WRITE");
-        let txn_id = *transaction.borrow().id();
+        let txn_id = transaction.id();
 
-        if self.transaction_log.contains_key(&txn_id) {
+        if self.transaction_log.contains_key(txn_id) {
             warn!("Duplicate transaction id {txn_id}, ignoring");
             return;
         }
 
-        self.transaction_log.insert(txn_id, transaction);
+        self.transaction_log.insert(*txn_id, transaction);
     }
 
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
-    pub fn dispute_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
-        let Some(txn) = self.transaction_log.get_mut(&ref_txn_id) else {
-            warn!("No found transaction");
-            return;
-        };
-
-        // Only operate on Deposit transactions
-        let Transaction::Deposit {
+    pub fn dispute_transaction(&mut self, ref_txn_id: &u32, ref_client_id: &u16) {
+        let Some(Transaction::Deposit {
             client_id,
             amount,
             status,
             ..
-        } = *txn.borrow()
+        }) = self.transaction_log.get_mut(ref_txn_id)
         else {
-            warn!("Referenced transaction is not a Deposit");
+            warn!("No Deposit transaction found with id {ref_txn_id}");
             return;
         };
 
@@ -94,7 +88,7 @@ impl AccountManager {
             return;
         }
 
-        if status != TransactionStatus::Clean {
+        if *status != TransactionStatus::Clean {
             warn!("Transaction is not clean: {status:?}");
             return;
         }
@@ -104,39 +98,30 @@ impl AccountManager {
             return;
         };
 
-        // 1. available funds should decrease by the amount disputed
-        // 2. held funds should increase by the amount disputed
-        // 3. total funds remain the same
         trace!("UPDATE_ACCT_FUNDS");
-        acct.available_funds -= amount;
-        acct.held_funds += amount;
+        acct.available_funds -= *amount;
+        acct.held_funds += *amount;
 
         trace!("TXN_STATUS_UPDATE");
-        txn.borrow_mut().update_status(TransactionStatus::Disputed);
+        *status = TransactionStatus::Disputed;
     }
 
     /// Releases associated held funds to a disputed transaction.
     /// Funds that were previously disputed are no longer disputed.
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
     pub fn resolve_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
-        let Some(txn) = self.transaction_log.get_mut(&ref_txn_id) else {
-            warn!("No found transaction");
-            return;
-        };
-
-        // Only operate on Deposit transactions
-        let Transaction::Deposit {
+        let Some(Transaction::Deposit {
             client_id,
             amount,
             status,
             ..
-        } = *txn.borrow()
+        }) = self.transaction_log.get_mut(&ref_txn_id)
         else {
-            warn!("Referenced transaction is not a Deposit");
+            warn!("No Deposit transaction found with id {ref_txn_id}");
             return;
         };
 
-        if client_id != ref_client_id {
+        if client_id != &ref_client_id {
             warn!(
                 client_id = client_id,
                 ref_client_id = ref_client_id,
@@ -145,7 +130,7 @@ impl AccountManager {
             return;
         }
 
-        if status != TransactionStatus::Disputed {
+        if status != &TransactionStatus::Disputed {
             warn!("Incorrect transaction status: {status:?}");
             return;
         }
@@ -156,11 +141,11 @@ impl AccountManager {
         };
 
         trace!("UPDATE_ACCT_FUNDS");
-        account.held_funds -= amount;
-        account.available_funds += amount;
+        account.held_funds -= *amount;
+        account.available_funds += *amount;
 
         trace!("UPDATE_TXN_STATUS");
-        txn.borrow_mut().update_status(TransactionStatus::Resolved);
+        *status = TransactionStatus::Resolved;
     }
 
     /// Reverses a transaction, where funds that were previously held have now been withdrawn.
@@ -168,24 +153,18 @@ impl AccountManager {
     /// This also freezes a clients account.
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
     pub fn handle_chargeback(&mut self, ref_txn_id: u32, ref_client_id: u16) {
-        let Some(txn) = self.transaction_log.get_mut(&ref_txn_id) else {
-            warn!("No found transaction");
-            return;
-        };
-
-        // Only operate on Deposit transactions
-        let Transaction::Deposit {
+        let Some(Transaction::Deposit {
             client_id,
             amount,
             status,
             ..
-        } = *txn.borrow()
+        }) = self.transaction_log.get_mut(&ref_txn_id)
         else {
-            warn!("Referenced transaction is not a Deposit");
+            warn!("No Deposit transaction found with id {ref_txn_id}");
             return;
         };
 
-        if client_id != ref_client_id {
+        if *client_id != ref_client_id {
             warn!(
                 client_id = client_id,
                 ref_client_id = ref_client_id,
@@ -194,7 +173,7 @@ impl AccountManager {
             return;
         }
 
-        if status != TransactionStatus::Disputed {
+        if *status != TransactionStatus::Disputed {
             warn!("Transaction is not disputed");
             return;
         }
@@ -209,21 +188,20 @@ impl AccountManager {
         account.freeze();
 
         trace!("UPDATE_ACCT_FUNDS");
-        account.held_funds -= amount;
-        account.total_funds -= amount;
+        account.held_funds -= *amount;
+        account.total_funds -= *amount;
 
         trace!("UPDATE_TXN_STATUS");
-        txn.borrow_mut()
-            .update_status(TransactionStatus::ChargedBack);
+        *status = TransactionStatus::ChargedBack;
     }
 
     /// Deposits a provided amount into the account associated with the provided client_id.
     /// If the client id does not exist, we create a new account.
-    pub fn deposit_to_account(&mut self, client_id: u16, amount: Decimal) -> bool {
+    pub fn deposit_to_account(&mut self, client_id: &u16, amount: Decimal) -> bool {
         let account = self
             .accounts
-            .entry(client_id)
-            .or_insert(ClientAccount::new(client_id));
+            .entry(*client_id)
+            .or_insert(ClientAccount::new(*client_id));
 
         if account.frozen {
             error!("Account is frozen, unable to deposit");
@@ -240,8 +218,13 @@ impl AccountManager {
     /// This will fail and return false if the account is locked
     /// or the account has insuffient funds.
     #[tracing::instrument(skip(self, amount))]
-    pub fn withdraw_from_account(&mut self, client_id: u16, txn_id: u32, amount: Decimal) -> bool {
-        let Some(account) = self.accounts.get_mut(&client_id) else {
+    pub fn withdraw_from_account(
+        &mut self,
+        client_id: &u16,
+        txn_id: &u32,
+        amount: &Decimal,
+    ) -> bool {
+        let Some(account) = self.accounts.get_mut(client_id) else {
             error!("Account does not exist");
             return false;
         };
@@ -262,6 +245,7 @@ impl AccountManager {
         true
     }
 
+    /// print accounts of this [`AccountManager`] in a CSV format to stdout.
     pub fn print_accounts(&self) {
         let mut writer = csv::Writer::from_writer(std::io::stdout());
 
@@ -271,6 +255,10 @@ impl AccountManager {
                 continue;
             };
         }
+
+        if let Err(why) = writer.flush() {
+            tracing::error!("Unable to flush csv writer: {why:?}");
+        }
     }
 }
 
@@ -278,17 +266,23 @@ impl AccountManager {
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::accounts::{AccountManager, ClientAccount};
+    use crate::{
+        accounts::{AccountManager, ClientAccount},
+        transactions::{Transaction, TransactionStatus},
+    };
 
     #[test]
     fn test_account_withdraw() {
         let mut act_mgr = AccountManager::default();
-        act_mgr.deposit_to_account(1, dec!(10.0));
-        let did_withdraw = act_mgr.withdraw_from_account(1, 1, dec!(11.0));
+        let client_id = 1;
+        let txn_id = 1;
+        act_mgr.deposit_to_account(&client_id, dec!(10.0));
+        let did_withdraw = act_mgr.withdraw_from_account(&client_id, &txn_id, &dec!(11.0));
         assert_eq!(did_withdraw, false);
 
-        act_mgr.deposit_to_account(1, dec!(10.0));
-        let did_withdraw = act_mgr.withdraw_from_account(1, 2, dec!(9.0));
+        act_mgr.deposit_to_account(&1, dec!(10.0));
+        let txn_id = 2;
+        let did_withdraw = act_mgr.withdraw_from_account(&client_id, &txn_id, &dec!(9.0));
         assert!(did_withdraw);
     }
 
@@ -296,7 +290,7 @@ mod tests {
     fn test_account_deposit() {
         let client_id = 2;
         let mut act_mgr = AccountManager::default();
-        let did_deposit = act_mgr.deposit_to_account(client_id, dec!(1.0));
+        let did_deposit = act_mgr.deposit_to_account(&client_id, dec!(1.0));
 
         let _ = {
             let this = &mut act_mgr;
@@ -309,11 +303,29 @@ mod tests {
     }
 
     #[test]
-    fn test_dispute() {}
+    fn test_dispute_then_chargeback() {
+        let mut mgr = AccountManager::default();
+
+        let txn_one = Transaction::Deposit {
+            client_id: 1,
+            transaction_id: 1,
+            amount: dec!(100.0),
+            status: TransactionStatus::Clean,
+        };
+
+        mgr.write_to_log(txn_one.clone());
+        mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
+        mgr.dispute_transaction(txn_one.id(), txn_one.client_id());
+
+        let Some(account) = mgr.accounts.get(txn_one.client_id()) else {
+            panic!("Account not found!");
+        };
+
+        assert_eq!(account.available_funds, dec!(0.0));
+        assert_eq!(account.held_funds, dec!(100.0));
+        assert_eq!(account.total_funds, dec!(100.0));
+    }
 
     #[test]
     fn test_resolve() {}
-
-    #[test]
-    fn test_chargeback() {}
 }
