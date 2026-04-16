@@ -57,6 +57,12 @@ impl AccountManager {
     pub fn write_to_log(&mut self, transaction: Rc<RefCell<Transaction>>) {
         trace!("TXN_LOG_WRITE");
         let txn_id = *transaction.borrow().id();
+
+        if self.transaction_log.contains_key(&txn_id) {
+            warn!("Duplicate transaction id {txn_id}, ignoring");
+            return;
+        }
+
         self.transaction_log.insert(txn_id, transaction);
     }
 
