@@ -13,7 +13,7 @@ outputting final account states to stdout.
 
 To run the project: 
 ```
-cargo run -- transactions.csv > output.csv
+cargo run -- transactions.csv > accounts.csv
 ```
 
 Tracing logs go to stderr deliberately, so it doesn't pollute the CSV output on stdout.
