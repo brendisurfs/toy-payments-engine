@@ -37,6 +37,16 @@ impl ClientAccount {
     pub fn freeze(&mut self) {
         self.frozen = true;
     }
+
+    pub fn rounded(&self) -> ClientAccount {
+        ClientAccount {
+            client_id: self.client_id,
+            available_funds: self.available_funds.round_dp(4),
+            held_funds: self.held_funds.round_dp(4),
+            total_funds: self.total_funds.round_dp(4),
+            frozen: self.frozen,
+        }
+    }
 }
 
 /// primitive structure holding clients,
@@ -243,15 +253,11 @@ impl AccountManager {
     }
 
     /// print accounts of this [`AccountManager`] in a CSV format to stdout.
-    pub fn print_accounts(&mut self) {
+    pub fn print_accounts(&self) {
         let mut writer = csv::Writer::from_writer(std::io::stdout());
 
-        for account in self.accounts.values_mut() {
-            account.available_funds = account.available_funds.round_dp(4);
-            account.total_funds = account.total_funds.round_dp(4);
-            account.held_funds = account.held_funds.round_dp(4);
-
-            if let Err(why) = writer.serialize(account) {
+        for account in self.accounts.values() {
+            if let Err(why) = writer.serialize(account.rounded()) {
                 error!("Unable to serialize account: {why:?}");
                 continue;
             };
