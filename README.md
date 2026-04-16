@@ -1,7 +1,5 @@
 # Toy Payments Engine 
 
-by Brendan Prednis
-
 ---
 
 ## Overview 
