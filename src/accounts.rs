@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use csv::StringRecord;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Serialize;
@@ -252,11 +253,15 @@ impl AccountManager {
         true
     }
 
-    // TODO: write out to an actual csv, not just print.
     pub fn print_accounts(&self) {
-        let accts = &self.accounts;
-        debug!("{accts:#?}");
-        todo!("Print out accounts");
+        let mut writer = csv::Writer::from_writer(std::io::stdout());
+
+        for account in self.accounts.values() {
+            if let Err(why) = writer.serialize(account) {
+                error!("Unable to serialize account: {why:?}");
+                continue;
+            };
+        }
     }
 }
 

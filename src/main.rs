@@ -5,8 +5,8 @@ mod transactions;
 
 use std::fs::File;
 
-use tracing::Level;
-use tracing_subscriber::fmt::format::FmtSpan;
+// use tracing::Level;
+// use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::{accounts::AccountManager, cli::parse_cli_args, transactions::on_next_transaction};
 
@@ -14,14 +14,17 @@ fn main() -> anyhow::Result<()> {
     // Creating a structured logging setup to profile and trace
     // transaction_ids throughout the system.
     // By setting with_max_level to Level::TRACE, you will be able to see all trace messages.
-    // Purposefully set to Level::INFO to just output accounts at the end.
-    tracing_subscriber::fmt()
-        .with_span_events(FmtSpan::CLOSE)
-        .with_max_level(Level::INFO)
-        .with_line_number(true)
-        .with_target(false)
-        .with_file(true)
-        .init();
+    //
+    // `.with_span_events` will show timings for each span.
+    // This is useful for latency timing, but out of the scope for this project.
+    //
+    // tracing_subscriber::fmt()
+    //     .with_span_events(FmtSpan::CLOSE)
+    //     .with_max_level(Level::ERROR)
+    //     .with_line_number(true)
+    //     .with_target(false)
+    //     .with_file(true)
+    //     .init();
 
     let args = parse_cli_args()?;
 
