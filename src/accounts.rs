@@ -320,8 +320,8 @@ mod tests {
         };
 
         assert_eq!(account.available_funds, dec!(0.0));
-        assert_eq!(account.held_funds, dec!(0.0));
         assert_eq!(account.total_funds, dec!(0.0));
+        assert_eq!(account.held_funds, dec!(0.0));
         assert!(account.frozen);
     }
 
@@ -346,7 +346,7 @@ mod tests {
         };
 
         assert_eq!(account.available_funds, dec!(100.0));
-        assert_eq!(account.held_funds, dec!(0.0));
         assert_eq!(account.total_funds, dec!(100.0));
+        assert_eq!(account.held_funds, dec!(0.0));
     }
 }
