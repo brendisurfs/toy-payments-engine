@@ -5,26 +5,28 @@ mod transactions;
 
 use std::fs::File;
 
-// use tracing::Level;
-// use tracing_subscriber::fmt::format::FmtSpan;
+use crate::{
+    accounts::AccountManager, cli::parse_cli_args, parser::read_to_payment_record,
+    transactions::on_next_transaction,
+};
 
-use crate::{accounts::AccountManager, cli::parse_cli_args, transactions::on_next_transaction};
+use tracing::Level;
+use tracing_subscriber::fmt::format::FmtSpan;
 
 fn main() -> anyhow::Result<()> {
-    // Creating a structured logging setup to profile and trace
-    // transaction_ids throughout the system.
+    // This creates a structured logging setup to profile and trace transaction_ids throughout the system.
     // By setting with_max_level to Level::TRACE, you will be able to see all trace messages.
     //
     // `.with_span_events` will show timings for each span.
-    // This is useful for latency timing, but out of the scope for this project.
-    //
-    // tracing_subscriber::fmt()
-    //     .with_span_events(FmtSpan::CLOSE)
-    //     .with_max_level(Level::ERROR)
-    //     .with_line_number(true)
-    //     .with_target(false)
-    //     .with_file(true)
-    //     .init();
+    // This is useful for analyzing latency and processing time in performance critical scenarios.
+    tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_max_level(Level::TRACE)
+        .with_writer(std::io::stderr) // write to stderr instead of stdio to avoid noise.
+        .with_line_number(true)
+        .with_target(false)
+        .with_file(true)
+        .init();
 
     let args = parse_cli_args()?;
 
@@ -42,7 +44,7 @@ fn main() -> anyhow::Result<()> {
 
     while let Some(next_record) = reader.records().next() {
         match next_record {
-            Ok(record) => match parser::read_to_payment_record(&record, None) {
+            Ok(record) => match read_to_payment_record(&record, None) {
                 Ok(payment_record) => on_next_transaction(payment_record, &mut account_manager),
                 Err(why) => {
                     tracing::error!("{why:?}");
