@@ -2,7 +2,7 @@ test:
   cargo test -- --nocapture
 
 run: 
-  cargo run -- test.csv
+  cargo run -- transactions.csv
 
 
 run-release: 

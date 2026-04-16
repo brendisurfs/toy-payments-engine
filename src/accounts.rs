@@ -58,12 +58,12 @@ impl AccountManager {
         trace!("TXN_LOG_WRITE");
         let txn_id = transaction.id();
 
-        if self.transaction_log.contains_key(txn_id) {
+        if self.transaction_log.contains_key(&txn_id) {
             warn!("Duplicate transaction id {txn_id}, ignoring");
             return;
         }
 
-        self.transaction_log.insert(*txn_id, transaction);
+        self.transaction_log.insert(txn_id, transaction);
     }
 
     #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
@@ -218,7 +218,7 @@ impl AccountManager {
     /// This will fail and return false if the account is locked
     /// or the account has insuffient funds.
     #[tracing::instrument(skip(self, amount))]
-    pub fn withdraw_from_account(&mut self, client_id: u16, txn_id: u32, amount: Decimal) -> bool {
+    pub fn withdraw_from_account(&mut self, client_id: u16, amount: Decimal) -> bool {
         let Some(account) = self.accounts.get_mut(&client_id) else {
             error!("Account does not exist");
             return false;
@@ -241,10 +241,14 @@ impl AccountManager {
     }
 
     /// print accounts of this [`AccountManager`] in a CSV format to stdout.
-    pub fn print_accounts(&self) {
+    pub fn print_accounts(&mut self) {
         let mut writer = csv::Writer::from_writer(std::io::stdout());
 
-        for account in self.accounts.values() {
+        for account in self.accounts.values_mut() {
+            account.available_funds = account.available_funds.round_dp(4);
+            account.total_funds = account.total_funds.round_dp(4);
+            account.held_funds = account.held_funds.round_dp(4);
+
             if let Err(why) = writer.serialize(account) {
                 error!("Unable to serialize account: {why:?}");
                 continue;
@@ -270,14 +274,12 @@ mod tests {
     fn test_account_withdraw() {
         let mut act_mgr = AccountManager::default();
         let client_id = 1;
-        let txn_id = 1;
         act_mgr.deposit_to_account(client_id, dec!(10.0));
-        let did_withdraw = act_mgr.withdraw_from_account(client_id, txn_id, dec!(11.0));
+        let did_withdraw = act_mgr.withdraw_from_account(client_id, dec!(11.0));
         assert_eq!(did_withdraw, false);
 
         act_mgr.deposit_to_account(client_id, dec!(10.0));
-        let txn_id = 2;
-        let did_withdraw = act_mgr.withdraw_from_account(client_id, txn_id, dec!(9.0));
+        let did_withdraw = act_mgr.withdraw_from_account(client_id, dec!(9.0));
         assert!(did_withdraw);
     }
 
@@ -309,16 +311,18 @@ mod tests {
         };
 
         mgr.write_to_log(txn_one.clone());
-        mgr.deposit_to_account(*txn_one.client_id(), txn_one.amount());
-        mgr.dispute_transaction(*txn_one.id(), *txn_one.client_id());
+        mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
+        mgr.dispute_transaction(txn_one.id(), txn_one.client_id());
+        mgr.handle_chargeback(txn_one.id(), txn_one.client_id());
 
-        let Some(account) = mgr.accounts.get(txn_one.client_id()) else {
+        let Some(account) = mgr.accounts.get(&txn_one.client_id()) else {
             panic!("Account not found!");
         };
 
         assert_eq!(account.available_funds, dec!(0.0));
-        assert_eq!(account.held_funds, dec!(100.0));
-        assert_eq!(account.total_funds, dec!(100.0));
+        assert_eq!(account.held_funds, dec!(0.0));
+        assert_eq!(account.total_funds, dec!(0.0));
+        assert!(account.frozen);
     }
 
     #[test]
@@ -333,11 +337,11 @@ mod tests {
         };
 
         mgr.write_to_log(txn_one.clone());
-        mgr.deposit_to_account(*txn_one.client_id(), txn_one.amount());
-        mgr.dispute_transaction(*txn_one.id(), *txn_one.client_id());
-        mgr.resolve_transaction(*txn_one.id(), *txn_one.client_id());
+        mgr.deposit_to_account(txn_one.client_id(), txn_one.amount());
+        mgr.dispute_transaction(txn_one.id(), txn_one.client_id());
+        mgr.resolve_transaction(txn_one.id(), txn_one.client_id());
 
-        let Some(account) = mgr.accounts.get(txn_one.client_id()) else {
+        let Some(account) = mgr.accounts.get(&txn_one.client_id()) else {
             panic!("Account not found!");
         };
 

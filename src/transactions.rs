@@ -46,10 +46,10 @@ pub enum Transaction {
 
 impl Transaction {
     /// Returns a reference to the client id of this [`Transaction`].
-    pub fn client_id(&self) -> &u16 {
+    pub fn client_id(&self) -> u16 {
         match self {
-            Transaction::Deposit { client_id, .. } => client_id,
-            Transaction::Withdrawal { client_id, .. } => client_id,
+            Transaction::Deposit { client_id, .. } => *client_id,
+            Transaction::Withdrawal { client_id, .. } => *client_id,
         }
     }
 
@@ -62,10 +62,10 @@ impl Transaction {
     }
 
     /// Returns a reference to the id of this [`Transaction`].
-    pub fn id(&self) -> &u32 {
+    pub fn id(&self) -> u32 {
         match self {
-            Transaction::Deposit { transaction_id, .. } => transaction_id,
-            Transaction::Withdrawal { transaction_id, .. } => transaction_id,
+            Transaction::Deposit { transaction_id, .. } => *transaction_id,
+            Transaction::Withdrawal { transaction_id, .. } => *transaction_id,
         }
     }
 }
@@ -167,7 +167,7 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
                     ..
                 } => {
                     Span::current().record("txn_id", transaction_id);
-                    manager.withdraw_from_account(client_id, transaction_id, amount)
+                    manager.withdraw_from_account(client_id, amount)
                 }
             };
         }
