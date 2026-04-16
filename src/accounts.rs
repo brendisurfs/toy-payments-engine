@@ -8,12 +8,21 @@ use crate::transactions::{Transaction, TransactionStatus};
 use tracing::{debug, error, trace, warn};
 
 /// Defines our structure for a single client.
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ClientAccount {
-    available_funds: Decimal,
-    total_funds: Decimal,
-    held_funds: Decimal,
+    #[serde(rename = "client")]
     client_id: u16,
+
+    #[serde(rename = "available")]
+    available_funds: Decimal,
+
+    #[serde(rename = "held")]
+    held_funds: Decimal,
+
+    #[serde(rename = "total")]
+    total_funds: Decimal,
+
+    #[serde(rename = "locked")]
     frozen: bool,
 }
 
@@ -51,9 +60,9 @@ impl AccountManager {
         self.transaction_log.insert(txn_id, transaction);
     }
 
-    #[tracing::instrument(skip(self), fields(txn_id = reference_txn_id))]
-    pub fn dispute_transaction(&mut self, reference_txn_id: u32) {
-        let Some(txn) = self.transaction_log.get_mut(&reference_txn_id) else {
+    #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
+    pub fn dispute_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
+        let Some(txn) = self.transaction_log.get_mut(&ref_txn_id) else {
             warn!("No found transaction");
             return;
         };
@@ -69,6 +78,14 @@ impl AccountManager {
             warn!("Referenced transaction is not a Deposit");
             return;
         };
+
+        if client_id != ref_client_id {
+            warn!(
+                client_id = client_id,
+                ref_client_id = ref_client_id,
+                "Mismatching client ids"
+            )
+        }
 
         if status != TransactionStatus::Clean {
             warn!("Transaction is not clean: {status:?}");
@@ -93,9 +110,9 @@ impl AccountManager {
 
     /// Releases associated held funds to a disputed transaction.
     /// Funds that were previously disputed are no longer disputed.
-    #[tracing::instrument(skip(self), fields(txn_id = reference_txn_id))]
-    pub fn resolve_transaction(&mut self, reference_txn_id: u32) {
-        let Some(txn) = self.transaction_log.get_mut(&reference_txn_id) else {
+    #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
+    pub fn resolve_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
+        let Some(txn) = self.transaction_log.get_mut(&ref_txn_id) else {
             warn!("No found transaction");
             return;
         };
@@ -112,6 +129,13 @@ impl AccountManager {
             return;
         };
 
+        if client_id != ref_client_id {
+            warn!(
+                client_id = client_id,
+                ref_client_id = ref_client_id,
+                "Mismatching client ids"
+            )
+        }
         if status != TransactionStatus::Disputed {
             warn!("Incorrect transaction status: {status:?}");
             return;
@@ -133,9 +157,9 @@ impl AccountManager {
     /// Reverses a transaction, where funds that were previously held have now been withdrawn.
     /// decreases clients held funds and total funds by the amount previously disputed.
     /// This also freezes a clients account.
-    #[tracing::instrument(skip(self), fields(txn_id = reference_txn_id))]
-    pub fn handle_chargeback(&mut self, reference_txn_id: u32) {
-        let Some(txn) = self.transaction_log.get_mut(&reference_txn_id) else {
+    #[tracing::instrument(skip(self, ref_client_id), fields(txn_id = ref_txn_id))]
+    pub fn handle_chargeback(&mut self, ref_txn_id: u32, ref_client_id: u16) {
+        let Some(txn) = self.transaction_log.get_mut(&ref_txn_id) else {
             warn!("No found transaction");
             return;
         };
@@ -151,6 +175,14 @@ impl AccountManager {
             warn!("Referenced transaction is not a Deposit");
             return;
         };
+
+        if client_id != ref_client_id {
+            warn!(
+                client_id = client_id,
+                ref_client_id = ref_client_id,
+                "Mismatching client ids"
+            )
+        }
 
         if status != TransactionStatus::Disputed {
             warn!("Transaction is not disputed");
@@ -169,7 +201,6 @@ impl AccountManager {
         trace!("UPDATE_ACCT_FUNDS");
         account.held_funds -= amount;
         account.total_funds -= amount;
-        account.available_funds -= amount;
 
         trace!("UPDATE_TXN_STATUS");
         txn.borrow_mut()
@@ -225,6 +256,7 @@ impl AccountManager {
     pub fn print_accounts(&self) {
         let accts = &self.accounts;
         debug!("{accts:#?}");
+        todo!("Print out accounts");
     }
 }
 

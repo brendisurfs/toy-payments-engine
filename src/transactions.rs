@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use tracing::Span;
 
-use crate::{accounts::AccountManager, parser::PaymentRecord};
+use crate::{accounts::AccountManager, cli, parser::PaymentRecord};
 
 #[derive(Debug, Deserialize, PartialEq, Clone, Copy)]
 pub enum TransactionStatus {
@@ -47,11 +47,19 @@ pub enum Transaction {
 }
 
 impl Transaction {
-    /// retrieves the transaction id being referenced from the Transaction.
+    /// Returns a reference to the id of this [`Transaction`].
     pub fn id(&self) -> &u32 {
         match self {
             Transaction::Deposit { transaction_id, .. } => transaction_id,
             Transaction::Withdrawal { transaction_id, .. } => transaction_id,
+        }
+    }
+
+    /// Returns a reference to the client id of this [`Transaction`].
+    pub fn client_id(&self) -> &u16 {
+        match self {
+            Transaction::Deposit { client_id, .. } => client_id,
+            Transaction::Withdrawal { client_id, .. } => client_id,
         }
     }
 
@@ -180,16 +188,19 @@ pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) 
 
         PaymentRecord::MutatingEvent(event) => match event {
             PaymentEvent::Dispute {
-                reference_txn_id, ..
-            } => manager.dispute_transaction(reference_txn_id),
+                reference_txn_id,
+                client_id,
+            } => manager.dispute_transaction(reference_txn_id, client_id),
 
             PaymentEvent::Resolve {
-                reference_txn_id, ..
-            } => manager.resolve_transaction(reference_txn_id),
+                reference_txn_id,
+                client_id,
+            } => manager.resolve_transaction(reference_txn_id, client_id),
 
             PaymentEvent::Chargeback {
-                reference_txn_id, ..
-            } => manager.handle_chargeback(reference_txn_id),
+                reference_txn_id,
+                client_id,
+            } => manager.handle_chargeback(reference_txn_id, client_id),
         },
     }
 }

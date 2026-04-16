@@ -11,9 +11,13 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use crate::{accounts::AccountManager, cli::parse_cli_args, transactions::on_next_transaction};
 
 fn main() -> anyhow::Result<()> {
+    // Creating a structured logging setup to profile and trace
+    // transaction_ids throughout the system.
+    // By setting with_max_level to Level::TRACE, you will be able to see all trace messages.
+    // Purposefully set to Level::INFO to just output accounts at the end.
     tracing_subscriber::fmt()
         .with_span_events(FmtSpan::CLOSE)
-        .with_max_level(Level::TRACE)
+        .with_max_level(Level::INFO)
         .with_line_number(true)
         .with_target(false)
         .with_file(true)
@@ -35,10 +39,13 @@ fn main() -> anyhow::Result<()> {
 
     while let Some(next_record) = reader.records().next() {
         match next_record {
-            Ok(record) => {
-                let payment_record = parser::read_to_payment_record(&record, None)?;
-                on_next_transaction(payment_record, &mut account_manager);
-            }
+            Ok(record) => match parser::read_to_payment_record(&record, None) {
+                Ok(payment_record) => on_next_transaction(payment_record, &mut account_manager),
+                Err(why) => {
+                    tracing::error!("{why:?}");
+                    continue;
+                }
+            },
             Err(why) => {
                 tracing::error!("{why:?}");
                 continue;
