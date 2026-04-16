@@ -84,7 +84,8 @@ impl AccountManager {
                 client_id = client_id,
                 ref_client_id = ref_client_id,
                 "Mismatching client ids"
-            )
+            );
+            return;
         }
 
         if status != TransactionStatus::Clean {
@@ -134,8 +135,10 @@ impl AccountManager {
                 client_id = client_id,
                 ref_client_id = ref_client_id,
                 "Mismatching client ids"
-            )
+            );
+            return;
         }
+
         if status != TransactionStatus::Disputed {
             warn!("Incorrect transaction status: {status:?}");
             return;
@@ -181,7 +184,8 @@ impl AccountManager {
                 client_id = client_id,
                 ref_client_id = ref_client_id,
                 "Mismatching client ids"
-            )
+            );
+            return;
         }
 
         if status != TransactionStatus::Disputed {
@@ -297,4 +301,13 @@ mod tests {
 
         assert!(did_deposit);
     }
+
+    #[test]
+    fn test_dispute() {}
+
+    #[test]
+    fn test_resolve() {}
+
+    #[test]
+    fn test_chargeback() {}
 }
