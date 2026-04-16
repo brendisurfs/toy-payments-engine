@@ -119,8 +119,8 @@ so plugging in a TCP stream in place of a file is a trivial change.
 
 ## AI Use 
 
-As of the year 2026, AI has become a prevalent tool used by many software engineers. I am no exception, and for the safety of future software, I believe it is important to be fully transparent and explicit about AI use.
-However, I used AI a bit differently than others may use for a project like this. 
+As of the year 2026, AI has become a prevalent tool used by many software engineers. 
+I am no exception, and for the safety of future software, I believe it is important to be fully transparent and explicit about AI use.
 
 I used AI as a code reviewer across multiple iterations, identifying hidden control flow bugs, flagging antipatterns, extended transaction data for testing, and helping explain *why* something was wrong.
 I refused to let AI write implementation code for me.
