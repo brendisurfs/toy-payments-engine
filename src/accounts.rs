@@ -1,12 +1,11 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use csv::StringRecord;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Serialize;
 
 use crate::transactions::{Transaction, TransactionStatus};
-use tracing::{debug, error, trace, warn};
+use tracing::{error, trace, warn};
 
 /// Defines our structure for a single client.
 #[derive(Debug, Default, Serialize)]

@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use tracing::Span;
 
-use crate::{accounts::AccountManager, cli, parser::PaymentRecord};
+use crate::{accounts::AccountManager, parser::PaymentRecord};
 
 #[derive(Debug, Deserialize, PartialEq, Clone, Copy)]
 pub enum TransactionStatus {
@@ -52,14 +52,6 @@ impl Transaction {
         match self {
             Transaction::Deposit { transaction_id, .. } => transaction_id,
             Transaction::Withdrawal { transaction_id, .. } => transaction_id,
-        }
-    }
-
-    /// Returns a reference to the client id of this [`Transaction`].
-    pub fn client_id(&self) -> &u16 {
-        match self {
-            Transaction::Deposit { client_id, .. } => client_id,
-            Transaction::Withdrawal { client_id, .. } => client_id,
         }
     }
 
