@@ -1,13 +1,14 @@
 mod accounts;
 mod cli;
+mod engine;
 mod parser;
 mod transactions;
 
 use std::fs::File;
 
 use crate::{
-    accounts::AccountManager, cli::parse_cli_args, parser::read_to_payment_record,
-    transactions::handle_record,
+    accounts::AccountManager, cli::parse_cli_args, engine::handle_record,
+    parser::read_to_payment_record,
 };
 
 use tracing::Level;
