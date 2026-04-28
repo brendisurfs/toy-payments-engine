@@ -78,7 +78,7 @@ impl AccountManager {
         }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self ), fields(client_id = ref_client_id, txn = ref_txn_id))]
     pub fn dispute_transaction(&mut self, ref_txn_id: u32, ref_client_id: u16) {
         let Some(Transaction::Deposit {
             client_id,
@@ -272,12 +272,23 @@ impl AccountManager {
 
 #[cfg(test)]
 mod tests {
+    use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
     use crate::{
-        accounts::{AccountManager, ClientAccount},
+        accounts::AccountManager,
         transactions::{Transaction, TransactionStatus},
     };
+
+    impl Transaction {
+        /// Returns the amount of this [`Transaction`].
+        pub fn amount(&self) -> Decimal {
+            match self {
+                Transaction::Deposit { amount, .. } => *amount,
+                Transaction::Withdrawal { amount, .. } => *amount,
+            }
+        }
+    }
 
     #[test]
     fn test_account_withdraw() {
@@ -297,13 +308,6 @@ mod tests {
         let client_id = 2;
         let mut act_mgr = AccountManager::default();
         let did_deposit = act_mgr.deposit_to_account(client_id, dec!(1.0));
-
-        let _ = {
-            let this = &mut act_mgr;
-            this.accounts
-                .entry(client_id)
-                .or_insert(ClientAccount::new(client_id))
-        };
 
         assert!(did_deposit);
     }

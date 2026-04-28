@@ -1,6 +1,5 @@
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use tracing::Span;
 
 use crate::{accounts::AccountManager, parser::PaymentRecord};
 
@@ -50,14 +49,6 @@ impl Transaction {
         match self {
             Transaction::Deposit { client_id, .. } => *client_id,
             Transaction::Withdrawal { client_id, .. } => *client_id,
-        }
-    }
-
-    /// Returns the amount of this [`Transaction`].
-    pub fn amount(&self) -> Decimal {
-        match self {
-            Transaction::Deposit { amount, .. } => *amount,
-            Transaction::Withdrawal { amount, .. } => *amount,
         }
     }
 
@@ -120,6 +111,21 @@ pub enum PaymentEvent {
         client_id: u16,
     },
 }
+impl PaymentEvent {
+    pub fn txn_id(&self) -> u32 {
+        match self {
+            Self::Dispute {
+                reference_txn_id, ..
+            } => *reference_txn_id,
+            Self::Resolve {
+                reference_txn_id, ..
+            } => *reference_txn_id,
+            Self::Chargeback {
+                reference_txn_id, ..
+            } => *reference_txn_id,
+        }
+    }
+}
 
 impl TryFrom<RawRow> for PaymentEvent {
     type Error = String;
@@ -137,6 +143,7 @@ impl TryFrom<RawRow> for PaymentEvent {
                 client_id: value.client,
                 reference_txn_id: value.tx,
             }),
+
             other => Err(format!("Unknown transaction type: {other:?}")),
         }
     }
@@ -144,30 +151,20 @@ impl TryFrom<RawRow> for PaymentEvent {
 
 /// handles the next transaction event from our stream.
 /// We match on our incoming event and calls the proper function to that event.
-pub fn on_next_transaction(record: PaymentRecord, manager: &mut AccountManager) {
+#[tracing::instrument(skip(manager, record), fields(txn_id = record.txn_id()))]
+pub fn handle_record(record: PaymentRecord, manager: &mut AccountManager) {
     match record {
         PaymentRecord::Transaction(txn) => {
             match txn {
                 Transaction::Deposit {
-                    transaction_id,
-                    client_id,
-                    amount,
-                    ..
+                    client_id, amount, ..
                 } => {
-                    Span::current().record("txn_id", transaction_id);
-                    // In this project, only write Deposits to the transaction log.
                     manager.write_to_log(txn);
                     manager.deposit_to_account(client_id, amount)
                 }
                 Transaction::Withdrawal {
-                    transaction_id,
-                    client_id,
-                    amount,
-                    ..
-                } => {
-                    Span::current().record("txn_id", transaction_id);
-                    manager.withdraw_from_account(client_id, amount)
-                }
+                    client_id, amount, ..
+                } => manager.withdraw_from_account(client_id, amount),
             };
         }
 

@@ -7,7 +7,7 @@ use std::fs::File;
 
 use crate::{
     accounts::AccountManager, cli::parse_cli_args, parser::read_to_payment_record,
-    transactions::on_next_transaction,
+    transactions::handle_record,
 };
 
 use tracing::Level;
@@ -44,13 +44,11 @@ fn main() -> anyhow::Result<()> {
 
     while let Some(next_record) = reader.records().next() {
         match next_record {
-            Ok(record) => match read_to_payment_record(&record, None) {
-                Ok(payment_record) => on_next_transaction(payment_record, &mut account_manager),
-                Err(why) => {
-                    tracing::error!("{why:?}");
-                    continue;
+            Ok(record) => {
+                if let Ok(payment_record) = read_to_payment_record(&record, None) {
+                    handle_record(payment_record, &mut account_manager);
                 }
-            },
+            }
             Err(why) => {
                 tracing::error!("{why:?}");
                 continue;

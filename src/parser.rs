@@ -17,6 +17,15 @@ pub enum PaymentRecord {
     MutatingEvent(PaymentEvent),
 }
 
+impl PaymentRecord {
+    pub fn txn_id(&self) -> u32 {
+        match self {
+            PaymentRecord::Transaction(txn) => txn.id(),
+            PaymentRecord::MutatingEvent(event) => event.txn_id(),
+        }
+    }
+}
+
 /// Reads a transaction row and parses it into a record.
 /// We take in optional headers in case this is coming from a csv,
 /// but also handling the case that this could come from a TCP stream.
@@ -64,9 +73,9 @@ mod tests {
     #[test]
     fn test_row_parses() {
         let wanted_transaction = Transaction::Deposit {
+            client_id: 1,
             amount: dec!(1.0),
             transaction_id: 1,
-            client_id: 1,
             status: TransactionStatus::Clean,
         };
 
