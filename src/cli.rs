@@ -7,7 +7,7 @@ pub struct CliArgs {
     pub input_file_path: String,
 }
 
-/// Reads the incoming env arguments and builds a CliArgs struct.
+/// Reads the incoming env arguments and builds a `CliArgs` struct.
 ///
 /// # Errors
 ///

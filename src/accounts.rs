@@ -105,7 +105,7 @@ impl AccountManager {
             return;
         }
 
-        let Some(acct) = self.accounts.get_mut(&client_id) else {
+        let Some(acct) = self.accounts.get_mut(client_id) else {
             warn!("No account exists");
             return;
         };
@@ -191,7 +191,7 @@ impl AccountManager {
         }
 
         // If we pass our initial checks, the account must be frozen if a withdrawal occurs.
-        let Some(account) = self.accounts.get_mut(&client_id) else {
+        let Some(account) = self.accounts.get_mut(client_id) else {
             warn!("No account exists");
             return;
         };
@@ -207,7 +207,7 @@ impl AccountManager {
         *status = TransactionStatus::ChargedBack;
     }
 
-    /// Deposits a provided amount into the account associated with the provided client_id.
+    /// Deposits a provided amount into the account associated with the provided `client_id`.
     /// If the client id does not exist, we create a new account.
     #[tracing::instrument(skip(self, amount))]
     pub fn deposit_to_account(&mut self, client_id: u16, amount: Decimal) -> bool {
@@ -260,8 +260,7 @@ impl AccountManager {
         for account in self.accounts.values() {
             if let Err(why) = writer.serialize(account.rounded()) {
                 error!("Unable to serialize account: {why:?}");
-                continue;
-            };
+            }
         }
 
         if let Err(why) = writer.flush() {
@@ -284,8 +283,9 @@ mod tests {
         /// Returns the amount of this [`Transaction`].
         pub fn amount(&self) -> Decimal {
             match self {
-                Transaction::Deposit { amount, .. } => *amount,
-                Transaction::Withdrawal { amount, .. } => *amount,
+                Transaction::Deposit { amount, .. } | Transaction::Withdrawal { amount, .. } => {
+                    *amount
+                }
             }
         }
     }
@@ -296,7 +296,7 @@ mod tests {
         let client_id = 1;
         act_mgr.deposit_to_account(client_id, dec!(10.0));
         let did_withdraw = act_mgr.withdraw_from_account(client_id, dec!(11.0));
-        assert_eq!(did_withdraw, false);
+        assert!(!did_withdraw);
 
         act_mgr.deposit_to_account(client_id, dec!(10.0));
         let did_withdraw = act_mgr.withdraw_from_account(client_id, dec!(9.0));

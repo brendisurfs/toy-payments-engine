@@ -1,3 +1,5 @@
+#![deny(clippy::pedantic)]
+
 mod accounts;
 mod cli;
 mod engine;
@@ -52,7 +54,6 @@ fn main() -> anyhow::Result<()> {
             }
             Err(why) => {
                 tracing::error!("{why:?}");
-                continue;
             }
         }
     }
